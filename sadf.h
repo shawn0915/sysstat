@@ -1,6 +1,6 @@
 /*
  * sadf: System activity data formatter
- * (C) 1999-2018 by Sebastien Godard (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien Godard (sysstat <at> orange.fr)
  */
 
 #ifndef _SADF_H
@@ -9,7 +9,7 @@
 #include "sa.h"
 
 /* DTD version for XML output */
-#define XML_DTD_VERSION	"3.6"
+#define XML_DTD_VERSION	"3.7"
 
 /* Various constants */
 #define DO_SAVE		0
@@ -28,7 +28,7 @@
  */
 
 /* Number of output formats */
-#define NR_FMT	8
+#define NR_FMT	9
 
 /* Output formats */
 #define F_DB_OUTPUT	1
@@ -39,6 +39,7 @@
 #define F_CONV_OUTPUT	6
 #define F_SVG_OUTPUT	7
 #define F_RAW_OUTPUT	8
+#define F_PCP_OUTPUT	9
 
 /* Format options */
 
@@ -160,23 +161,33 @@ __printf_funct_t print_raw_comment
  * Prototypes used to display the statistics part of the report
  */
 __printf_funct_t print_xml_statistics
-	(int *, int);
+	(int *, int, struct activity * [], unsigned int []);
 __printf_funct_t print_json_statistics
-	(int *, int);
+	(int *, int, struct activity * [], unsigned int []);
+__printf_funct_t print_pcp_statistics
+	(int *, int, struct activity * [], unsigned int []);
 
 /*
  * Prototypes used to display the timestamp part of the report
  */
 __tm_funct_t print_db_timestamp
-	(void *, int, char *, char *, unsigned long long, struct file_header *, unsigned int);
+	(void *, int, char *, char *, unsigned long long,
+	 struct record_header *, struct file_header *, unsigned int);
 __tm_funct_t print_ppc_timestamp
-	(void *, int, char *, char *, unsigned long long, struct file_header *, unsigned int);
+	(void *, int, char *, char *, unsigned long long,
+	 struct record_header *, struct file_header *, unsigned int);
 __tm_funct_t print_xml_timestamp
-	(void *, int, char *, char *, unsigned long long, struct file_header *, unsigned int);
+	(void *, int, char *, char *, unsigned long long,
+	 struct record_header *, struct file_header *, unsigned int);
 __tm_funct_t print_json_timestamp
-	(void *, int, char *, char *, unsigned long long, struct file_header *, unsigned int);
+	(void *, int, char *, char *, unsigned long long,
+	 struct record_header *, struct file_header *, unsigned int);
 __tm_funct_t print_raw_timestamp
-	(void *, int, char *, char *, unsigned long long, struct file_header *, unsigned int);
+	(void *, int, char *, char *, unsigned long long,
+	 struct record_header *, struct file_header *, unsigned int);
+__tm_funct_t print_pcp_timestamp
+	(void *, int, char *, char *, unsigned long long,
+	 struct record_header *, struct file_header *, unsigned int);
 
 /*
  * Prototypes used to display the report header
@@ -191,6 +202,9 @@ __printf_funct_t print_hdr_header
 	(void *, int, char *, struct file_magic *, struct file_header *,
 	 struct activity * [], unsigned int [], struct file_activity *);
 __printf_funct_t print_svg_header
+	(void *, int, char *, struct file_magic *, struct file_header *,
+	 struct activity * [], unsigned int [], struct file_activity *);
+__printf_funct_t print_pcp_header
 	(void *, int, char *, struct file_magic *, struct file_header *,
 	 struct activity * [], unsigned int [], struct file_activity *);
 

@@ -1,10 +1,10 @@
-.TH SADC 8 "JULY 2018" Linux "Linux User's Manual" -*- nroff -*-
+.TH SADC 8 "FEBRUARY 2019" Linux "Linux User's Manual" -*- nroff -*-
 .SH NAME
 sadc \- System activity data collector.
 .SH SYNOPSIS
 .B @SA_LIB_DIR@/sadc [ -C
 .I comment
-.B ] [ -D ] [ -F ] [ -L ] [ -V ] [ -S { DISK | INT | IPV6 | POWER | SNMP | XDISK | ALL | XALL [,...] } ] [
+.B ] [ -D ] [ -F ] [ -f ] [ -L ] [ -V ] [ -S { keyword [,...] | ALL | XALL } ] [
 .I interval
 .B [
 .I count
@@ -106,6 +106,12 @@ then it will be truncated. This may be useful for daily data files
 created by an older version of
 .B sadc
 and whose format is no longer compatible with current one.
+.IP -f
+fdatasync() will be used to ensure data is written to disk. This differs
+from the normal operation in that a sudden system reset is less likely to
+result in the saDD datafiles being corrupted. However, this is at the
+expense of performance within the sadc process as forward progress will be
+blocked while data is written to underlying disk instead of just to cache.
 .IP -L
 .B sadc
 will try to get an exclusive lock on the
@@ -124,7 +130,9 @@ If the system is under heavy load, an old
 .B sadc
 might still be running when cron starts a new one. Without locking,
 this situation can result in a corrupted system activity file.
-.IP "-S { DISK | INT | IPV6 | POWER | SNMP | XDISK | ALL | XALL [,...] }"
+.IP "-S { keyword [,...] | ALL | XALL }"
+Possible keywords are DISK, INT, IPV6, POWER, SNMP, XDISK, ALL, and XALL.
+
 Specify which optional activities should be collected by
 .BR sadc .
 Some activities are optional to prevent data files from growing too large.

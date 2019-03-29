@@ -1,6 +1,6 @@
 /*
  * sar/sadc: Report system activity
- * (C) 1999-2018 by Sebastien Godard (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien Godard (sysstat <at> orange.fr)
  */
 
 #ifndef _SA_H
@@ -110,6 +110,7 @@
 #define S_F_HUMAN_READ		0x01000000
 #define S_F_ZERO_OMIT		0x02000000
 #define S_F_SVG_SHOW_TOC	0x04000000
+#define S_F_FDATASYNC		0x08000000
 
 #define WANT_SINCE_BOOT(m)		(((m) & S_F_SINCE_BOOT)   == S_F_SINCE_BOOT)
 #define WANT_SA_ROTAT(m)		(((m) & S_F_SA_ROTAT)     == S_F_SA_ROTAT)
@@ -139,6 +140,7 @@
 #define PACK_VIEWS(m)			(((m) & S_F_SVG_PACKED) == S_F_SVG_PACKED)
 #define DISPLAY_HUMAN_READ(m)		(((m) & S_F_HUMAN_READ) == S_F_HUMAN_READ)
 #define DISPLAY_TOC(m)			(((m) & S_F_SVG_SHOW_TOC) == S_F_SVG_SHOW_TOC)
+#define FDATASYNC(m)			(((m) & S_F_FDATASYNC)    == S_F_FDATASYNC)
 
 #define AO_F_NULL		0x00000000
 
@@ -224,6 +226,12 @@
 #define K_HEIGHT	"height="
 #define K_PACKED	"packed"
 #define K_SHOWTOC	"showtoc"
+#define K_CUSTOMCOL	"customcol"
+#define K_BWCOL		"bwcol"
+#define K_PCPARCHIVE	"pcparchive="
+
+/* Environment variables */
+#define ENV_COLORS_PALETTE	"S_COLORS_PALETTE"
 
 /* Groups of activities */
 #define G_DEFAULT	0x00
@@ -697,6 +705,11 @@ struct record_header {
  * line for this activity (see options --dev=, --iface=, ...)
  */
 #define AO_LIST_ON_CMDLINE	0x100
+/*
+ * Indicate that the number of items for this activity should always
+ * be counted, even if the activity is not collected.
+ */
+#define AO_ALWAYS_COUNTED	0x200
 
 #define IS_COLLECTED(m)		(((m) & AO_COLLECTED)        == AO_COLLECTED)
 #define IS_SELECTED(m)		(((m) & AO_SELECTED)         == AO_SELECTED)
@@ -707,6 +720,7 @@ struct record_header {
 #define ONE_GRAPH_PER_ITEM(m)	(((m) & AO_GRAPH_PER_ITEM)   == AO_GRAPH_PER_ITEM)
 #define IS_MATRIX(m)		(((m) & AO_MATRIX)           == AO_MATRIX)
 #define HAS_LIST_ON_CMDLINE(m)	(((m) & AO_LIST_ON_CMDLINE)  == AO_LIST_ON_CMDLINE)
+#define ALWAYS_COUNT_ITEMS(m)	(((m) & AO_ALWAYS_COUNTED)   == AO_ALWAYS_COUNTED)
 
 #define _buf0	buf[0]
 #define _nr0	nr[0]
@@ -809,6 +823,11 @@ struct activity {
 	 * This function is used by sadf to display activity statistics in raw format.
 	 */
 	__print_funct_t (*f_raw_print) (struct activity *, char *, int);
+	/*
+	 * This function is used by sadf to display activity statistics in PCP format.
+	 */
+	__print_funct_t (*f_pcp_print) (struct activity *, int, unsigned long long,
+					struct record_header *);
 	/*
 	 * This function is used by sadf to count the number of new items in current
 	 * sample and add them to the linked list @item_list.
@@ -1002,15 +1021,15 @@ struct report_format {
 				      struct activity * [], unsigned int [], struct file_activity *);
 	/*
 	 * This function defines the statistics part of the report.
-	 * Used only with textual (XML-like) reports.
+	 * Used only with textual (XML-like) reports and PCP archives.
 	 */
-	__printf_funct_t (*f_statistics) (int *, int);
+	__printf_funct_t (*f_statistics) (int *, int, struct activity * [], unsigned int []);
 	/*
 	 * This function defines the timestamp part of the report.
 	 * Used only with textual (XML-like) reports.
 	 */
 	__tm_funct_t (*f_timestamp) (void *, int, char *, char *, unsigned long long,
-				     struct file_header *, unsigned int);
+				     struct record_header *, struct file_header *, unsigned int);
 	/*
 	 * This function displays the restart messages.
 	 */
@@ -1099,6 +1118,23 @@ struct report_format {
 
 /* Maximum number of horizontal lines for the background grid */
 #define MAX_HLINES_NR	10
+
+/* Color palette constants */
+#define SVG_COLORS_IDX_MASK	0x0f
+#define SVG_COL_PALETTE_SIZE	24
+#define SVG_COL_PALETTE_NR	3
+#define SVG_COL_BCKGRD_IDX	16
+#define SVG_COL_AXIS_IDX	17
+#define SVG_COL_GRID_IDX	18
+#define SVG_COL_TITLE_IDX	19
+#define SVG_COL_INFO_IDX	20
+#define SVG_COL_DEFAULT_IDX	21
+#define SVG_COL_HEADER_IDX	22
+#define SVG_COL_ERROR_IDX	23
+
+#define SVG_DEFAULT_COL_PALETTE	0
+#define SVG_CUSTOM_COL_PALETTE	1
+#define SVG_BW_COL_PALETTE	2
 
 #define MAYBE	0x80
 
@@ -1296,8 +1332,8 @@ void allocate_structures
 int check_disk_reg
 	(struct activity *, int, int, int);
 void check_file_actlst
-	(int *, char *, struct activity * [], struct file_magic *, struct file_header *,
-	 struct file_activity **, unsigned int [], int, int *, int *);
+	(int *, char *, struct activity * [], unsigned int, struct file_magic *,
+	 struct file_header *, struct file_activity **, unsigned int [], int, int *, int *);
 int check_net_dev_reg
 	(struct activity *, int, int, int);
 int check_net_edev_reg
@@ -1326,6 +1362,8 @@ void get_global_soft_statistics
 	(struct activity *, int, int, unsigned int, unsigned char []);
 void get_itv_value
 	(struct record_header *, struct record_header *, unsigned long long *);
+void init_custom_color_palette
+	(void);
 int next_slice
 	(unsigned long long, unsigned long long, int, long);
 void parse_sa_devices
@@ -1358,11 +1396,10 @@ int read_file_stat_bunch
 __nr_t read_nr_value
 	(int, char *, struct file_magic *, int, int, int);
 int read_record_hdr
-	(int, void *, struct record_header *, struct file_header *, int, int, int);
+	(int, void *, struct record_header *, struct file_header *, int, int,
+	 int, size_t);
 void reallocate_all_buffers
 	(struct activity *, __nr_t);
-void remap_struct
-	(unsigned int [], unsigned int [], void *, unsigned int, unsigned int);
 void replace_nonprintable_char
 	(int, char *);
 int sa_fread

@@ -1,6 +1,6 @@
 /*
  * mpstat: per-processor statistics
- * (C) 2000-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 2000-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -270,7 +270,7 @@ void sfree_mp_struct(void)
  * CPU that each node has).
  *
  * IN:
- * @cpu_nr		Number of CPU on this machine.
+ * @nr_cpus		Number of CPU on this machine.
  *
  * OUT:
  * @cpu_per_node	Number of CPU per node.
@@ -281,23 +281,23 @@ void sfree_mp_struct(void)
  * A value of -1 means no nodes have been found.
  ***************************************************************************
  */
-int get_node_placement(int cpu_nr, int cpu_per_node[], int cpu2node[])
+int get_node_placement(int nr_cpus, int cpu_per_node[], int cpu2node[])
 
 {
 	DIR *dir;
 	struct dirent *drd;
 	char line[MAX_PF_NAME];
-	int cpu, node, node_nr = -1;
+	int cpu, node, hi_node_nr = -1;
 
 	/* Init number of CPU per node */
-	memset(cpu_per_node, 0, sizeof(int) * (cpu_nr + 1));
+	memset(cpu_per_node, 0, sizeof(int) * (nr_cpus + 1));
 	/* CPU belongs to no node by default */
-	memset(cpu2node, -1, sizeof(int) * cpu_nr);
+	memset(cpu2node, -1, sizeof(int) * nr_cpus);
 
 	/* This is node "all" */
-	cpu_per_node[0] = cpu_nr;
+	cpu_per_node[0] = nr_cpus;
 
-	for (cpu = 0; cpu < cpu_nr; cpu++) {
+	for (cpu = 0; cpu < nr_cpus; cpu++) {
 		snprintf(line, MAX_PF_NAME, "%s/cpu%d", SYSFS_DEVCPU, cpu);
 		line[MAX_PF_NAME - 1] = '\0';
 
@@ -310,15 +310,15 @@ int get_node_placement(int cpu_nr, int cpu_per_node[], int cpu2node[])
 
 			if (!strncmp(drd->d_name, "node", 4) && isdigit(drd->d_name[4])) {
 				node = atoi(drd->d_name + 4);
-				if ((node >= cpu_nr) || (node < 0)) {
+				if ((node >= nr_cpus) || (node < 0)) {
 					/* Assume we cannot have more nodes than CPU */
 					closedir(dir);
 					return -1;
 				}
 				cpu_per_node[node + 1]++;
 				cpu2node[cpu] = node;
-				if (node > node_nr) {
-					node_nr = node;
+				if (node > hi_node_nr) {
+					hi_node_nr = node;
 				}
 				/* Node placement found for current CPU: Go to next CPU directory */
 				break;
@@ -329,7 +329,7 @@ int get_node_placement(int cpu_nr, int cpu_per_node[], int cpu2node[])
 		closedir(dir);
 	}
 
-	return node_nr;
+	return hi_node_nr;
 }
 
 /*
@@ -652,6 +652,7 @@ void write_json_cpu_stats(int tab, unsigned long long deltot_jiffies, int prev, 
 			  unsigned char offline_cpu_bitmap[])
 {
 	int i, next = FALSE;
+	char cpu_name[16];
 	struct stats_cpu *scc, *scp;
 
 	xprintf(tab++, "\"cpu-load\": [");
@@ -675,7 +676,15 @@ void write_json_cpu_stats(int tab, unsigned long long deltot_jiffies, int prev, 
 		}
 		next = TRUE;
 
-		if (i != 0) {
+		if (i == 0) {
+			/* This is CPU "all" */
+			strcpy(cpu_name, "all");
+
+		}
+		else {
+			snprintf(cpu_name, 16, "%d", i - 1);
+			cpu_name[15] = '\0';
+
 			/* Recalculate itv for current proc */
 			deltot_jiffies = get_per_cpu_interval(scc, scp);
 
@@ -694,9 +703,9 @@ void write_json_cpu_stats(int tab, unsigned long long deltot_jiffies, int prev, 
 			}
 		}
 
-		xprintf0(tab, "{\"cpu\": \"%d\", \"usr\": %.2f, \"nice\": %.2f, \"sys\": %.2f, "
+		xprintf0(tab, "{\"cpu\": \"%s\", \"usr\": %.2f, \"nice\": %.2f, \"sys\": %.2f, "
 			 "\"iowait\": %.2f, \"irq\": %.2f, \"soft\": %.2f, \"steal\": %.2f, "
-			 "\"guest\": %.2f, \"gnice\": %.2f, \"idle\": %.2f}", i - 1,
+			 "\"guest\": %.2f, \"gnice\": %.2f, \"idle\": %.2f}", cpu_name,
 			 (scc->cpu_user - scc->cpu_guest) < (scp->cpu_user - scp->cpu_guest) ?
 			 0.0 :
 			 ll_sp_value(scp->cpu_user - scp->cpu_guest,
@@ -1871,12 +1880,10 @@ void rw_mpstat_loop(int dis_hdr, int rows)
 		       STATS_IRQCPU_SIZE * (cpu_nr + 1) * softirqcpu_nr);
 	}
 
-	if (!DISPLAY_JSON_OUTPUT(flags)) {
-		/* Set a handler for SIGINT */
-		memset(&int_act, 0, sizeof(int_act));
-		int_act.sa_handler = int_handler;
-		sigaction(SIGINT, &int_act, NULL);
-	}
+	/* Set a handler for SIGINT */
+	memset(&int_act, 0, sizeof(int_act));
+	int_act.sa_handler = int_handler;
+	sigaction(SIGINT, &int_act, NULL);
 
 	pause();
 
@@ -1932,17 +1939,16 @@ void rw_mpstat_loop(int dis_hdr, int rows)
 
 		if (count) {
 
-			if (DISPLAY_JSON_OUTPUT(flags)) {
-				printf(",\n");
-			}
 			pause();
 
 			if (sigint_caught) {
 				/* SIGINT signal caught => Display average stats */
 				count = 0;
-				printf("\n");	/* Skip "^C" displayed on screen */
 			}
 			else {
+				if (DISPLAY_JSON_OUTPUT(flags)) {
+					printf(",\n");
+				}
 				curr ^= 1;
 			}
 		}

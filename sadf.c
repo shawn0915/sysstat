@@ -1,6 +1,6 @@
 /*
  * sadf: system activity data formatter
- * (C) 1999-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -38,6 +38,11 @@
 # define _(string) (string)
 #endif
 
+#ifdef HAVE_PCP
+#include <pcp/pmapi.h>
+#include <pcp/import.h>
+#endif
+
 #ifdef USE_SCCSID
 #define SCCSID "@(#)sysstat-" VERSION ": " __FILE__ " compiled " __DATE__ " " __TIME__
 char *sccsid(void) { return (SCCSID); }
@@ -51,6 +56,8 @@ int endian_mismatch = FALSE;
 int arch_64 = FALSE;
 /* Number of decimal places */
 int dplaces_nr = -1;
+/* Color palette number */
+int palette = SVG_DEFAULT_COL_PALETTE;
 
 unsigned int flags = 0;
 unsigned int dm_major;		/* Device-mapper major number */
@@ -92,7 +99,7 @@ void usage(char *progname)
 		progname);
 
 	fprintf(stderr, _("Options are:\n"
-			  "[ -C ] [ -c | -d | -g | -j | -p | -r | -x ] [ -H ] [ -h ] [ -T | -t | -U ] [ -V ]\n"
+			  "[ -C ] [ -c | -d | -g | -j | -l | -p | -r | -x ] [ -H ] [ -h ] [ -T | -t | -U ] [ -V ]\n"
 			  "[ -O <opts> [,...] ] [ -P { <cpu> [,...] | ALL } ]\n"
 			  "[ --dev=<dev_list> ] [ --fs=<fs_list> ] [ --iface=<iface_list> ]\n"
 			  "[ -s [ <hh:mm[:ss]> ] ] [ -e [ <hh:mm[:ss]> ] ]\n"
@@ -119,19 +126,18 @@ void init_structures(void)
  * Look for output format in array.
  *
  * IN:
- * @fmt		Array of output formats.
- * @format	Output format to look for.
+ * @oformat	Output format to look for.
  *
  * RETURNS:
  * Position of output format in array.
  ***************************************************************************
  */
-int get_format_position(struct report_format *fmt[], unsigned int format)
+int get_format_position(unsigned int oformat)
 {
         int i;
 
         for (i = 0; i < NR_FMT; i++) {
-                if (fmt[i]->id == format)
+                if (fmt[i]->id == oformat)
                         break;
         }
 
@@ -162,7 +168,7 @@ void check_format_options(void)
 	}
 
 	/* Get format position in array */
-	f_position = get_format_position(fmt, format);
+	f_position = get_format_position(format);
 
 	/* Check options consistency wrt output format */
 	if (!ACCEPT_HEADER_ONLY(fmt[f_position]->options)) {
@@ -237,7 +243,7 @@ int read_next_sample(int ifd, int action, int curr, char *file, int *rtype, int 
 
 	/* Read current record */
 	if ((rc = read_record_hdr(ifd, rec_hdr_tmp, &record_hdr[curr], &file_hdr,
-			    arch_64, endian_mismatch, oneof)) != 0)
+			    arch_64, endian_mismatch, oneof, sizeof(rec_hdr_tmp))) != 0)
 		/* End of sa file */
 		return rc;
 
@@ -709,8 +715,8 @@ int generic_write_stats(int curr, int use_tm_start, int use_tm_end, int reset,
 				    cur_date, cur_time, TIMESTAMP_LEN, rectime);
 
 	if (*fmt[f_position]->f_timestamp) {
-		pre = (char *) (*fmt[f_position]->f_timestamp)(parm, F_BEGIN, cur_date, cur_time,
-							       dt, &file_hdr, flags);
+		pre = (char *) (*fmt[f_position]->f_timestamp)(parm, F_BEGIN, cur_date, cur_time, dt,
+							       &record_hdr[curr], &file_hdr, flags);
 	}
 
 	/* Display statistics */
@@ -730,7 +736,8 @@ int generic_write_stats(int curr, int use_tm_start, int use_tm_end, int reset,
 
 					if (*fmt[f_position]->f_timestamp) {
 						(*fmt[f_position]->f_timestamp)(tab, F_MAIN, cur_date, cur_time,
-										dt, &file_hdr, flags);
+										dt, &record_hdr[curr],
+										&file_hdr, flags);
 					}
 				}
 				(*act[i]->f_json_print)(act[i], curr, *tab, itv);
@@ -761,6 +768,13 @@ int generic_write_stats(int curr, int use_tm_start, int use_tm_end, int reset,
 				(*act[i]->f_raw_print)(act[i], pre, curr);
 			}
 
+			else if (format == F_PCP_OUTPUT) {
+				/* PCP archive */
+				if (*act[i]->f_pcp_print) {
+					(*act[i]->f_pcp_print)(act[i], curr, itv, &record_hdr[curr]);
+				}
+			}
+
 			else {
 				/* Other output formats: db, ppc */
 				(*act[i]->f_render)(act[i], (format == F_DB_OUTPUT), pre, curr, itv);
@@ -769,8 +783,8 @@ int generic_write_stats(int curr, int use_tm_start, int use_tm_end, int reset,
 	}
 
 	if (*fmt[f_position]->f_timestamp) {
-		(*fmt[f_position]->f_timestamp)(parm, F_END, cur_date, cur_time,
-						dt, &file_hdr, flags);
+		(*fmt[f_position]->f_timestamp)(parm, F_END, cur_date, cur_time, dt,
+						&record_hdr[curr], &file_hdr, flags);
 	}
 
 	return 1;
@@ -979,12 +993,13 @@ void display_curr_act_graphs(int ifd, int *curr, long *cnt, int *eosaf,
  ***************************************************************************
  * Display file contents in selected format (logic #1).
  * Logic #1:	Grouped by record type. Sorted by timestamp.
- * Formats:	XML, JSON
+ * Formats:	XML, JSON, PCP
  *
  * IN:
  * @ifd		File descriptor of input file.
  * @file_actlst	List of (known or unknown) activities in file.
  * @file	System activity data file name (name of file being read).
+ * @pcparchive	PCP archive file name.
  * @file_magic	System activity file magic header.
  * @rectime	Structure where timestamp (expressed in local time or in UTC
  *		depending on whether options -T/-t have been used or not) can
@@ -994,7 +1009,7 @@ void display_curr_act_graphs(int ifd, int *curr, long *cnt, int *eosaf,
  ***************************************************************************
  */
 void logic1_display_loop(int ifd, struct file_activity *file_actlst, char *file,
-			 struct file_magic *file_magic,
+			 char *pcparchive, struct file_magic *file_magic,
 			 struct tm *rectime, struct tm *loctime)
 {
 	int curr, tab = 0, rtype;
@@ -1006,18 +1021,23 @@ void logic1_display_loop(int ifd, struct file_activity *file_actlst, char *file,
 		setlocale(LC_NUMERIC, "C");
 	}
 
+	/* Count items in file. Needed only for PCP output */
+	if (format == F_PCP_OUTPUT) {
+		count_file_items(ifd, file, file_magic, file_actlst, rectime, loctime);
+	}
+
 	/* Save current file position */
 	seek_file_position(ifd, DO_SAVE);
 
 	/* Print header (eg. XML file header) */
 	if (*fmt[f_position]->f_header) {
-		(*fmt[f_position]->f_header)(&tab, F_BEGIN, file, file_magic,
+		(*fmt[f_position]->f_header)(&tab, F_BEGIN, pcparchive, file_magic,
 					     &file_hdr, act, id_seq, file_actlst);
 	}
 
 	/* Process activities */
 	if (*fmt[f_position]->f_statistics) {
-		(*fmt[f_position]->f_statistics)(&tab, F_BEGIN);
+		(*fmt[f_position]->f_statistics)(&tab, F_BEGIN, act, id_seq);
 	}
 
 	do {
@@ -1049,7 +1069,7 @@ void logic1_display_loop(int ifd, struct file_activity *file_actlst, char *file,
 
 				if (!eosaf && (rtype != R_COMMENT) && (rtype != R_RESTART)) {
 					if (*fmt[f_position]->f_statistics) {
-						(*fmt[f_position]->f_statistics)(&tab, F_MAIN);
+						(*fmt[f_position]->f_statistics)(&tab, F_MAIN, act, id_seq);
 					}
 
 					/* next is set to 1 when we were close enough to desired interval */
@@ -1083,7 +1103,7 @@ void logic1_display_loop(int ifd, struct file_activity *file_actlst, char *file,
 	while (!eosaf);
 
 	if (*fmt[f_position]->f_statistics) {
-		(*fmt[f_position]->f_statistics)(&tab, F_END);
+		(*fmt[f_position]->f_statistics)(&tab, F_END, act, id_seq);
 	}
 
 	/* Rewind file */
@@ -1130,7 +1150,7 @@ void logic1_display_loop(int ifd, struct file_activity *file_actlst, char *file,
 
 	/* Print header trailer */
 	if (*fmt[f_position]->f_header) {
-		(*fmt[f_position]->f_header)(&tab, F_END, file, file_magic,
+		(*fmt[f_position]->f_header)(&tab, F_END, pcparchive, file_magic,
 					     &file_hdr, act, id_seq, file_actlst);
 	}
 }
@@ -1293,6 +1313,9 @@ void logic3_display_loop(int ifd, struct file_activity *file_actlst,
 	/* Use a decimal point to make SVG code locale independent */
 	setlocale(LC_NUMERIC, "C");
 
+	/* Init custom colors palette */
+	init_custom_color_palette();
+
 	/*
 	 * Calculate the number of rows and the max number of views per row to display.
 	 * Result may be 0. In this case, "No data" will be displayed instead of the graphs.
@@ -1397,9 +1420,10 @@ close_svg:
  *
  * IN:
  * @dfile	System activity data file name.
+ * @pcparchive	PCP archive file name.
  ***************************************************************************
  */
-void read_stats_from_file(char dfile[])
+void read_stats_from_file(char dfile[], char pcparchive[])
 {
 	struct file_magic file_magic;
 	struct file_activity *file_actlst = NULL;
@@ -1408,11 +1432,14 @@ void read_stats_from_file(char dfile[])
 
 	/* Prepare file for reading and read its headers */
 	ignore = ACCEPT_BAD_FILE_FORMAT(fmt[f_position]->options);
-	check_file_actlst(&ifd, dfile, act, &file_magic, &file_hdr,
+	check_file_actlst(&ifd, dfile, act, flags, &file_magic, &file_hdr,
 			  &file_actlst, id_seq, ignore, &endian_mismatch, &arch_64);
 
 	if (DISPLAY_HDR_ONLY(flags)) {
 		if (*fmt[f_position]->f_header) {
+			if (format == F_PCP_OUTPUT) {
+				dfile = pcparchive;
+			}
 			/* Display only data file header then exit */
 			(*fmt[f_position]->f_header)(&tab, F_BEGIN + F_END, dfile, &file_magic,
 						     &file_hdr, act, id_seq, file_actlst);
@@ -1433,7 +1460,7 @@ void read_stats_from_file(char dfile[])
 				    &rectime, &loctime, dfile, &file_magic);
 	}
 	else {
-		logic1_display_loop(ifd, file_actlst, dfile,
+		logic1_display_loop(ifd, file_actlst, dfile, pcparchive,
 				    &file_magic, &rectime, &loctime);
 	}
 
@@ -1453,13 +1480,13 @@ int main(int argc, char **argv)
 	int opt = 1, sar_options = 0;
 	int day_offset = 0;
 	int i, rc, p, q;
-	char dfile[MAX_FILE_LEN];
+	char dfile[MAX_FILE_LEN], pcparchive[MAX_FILE_LEN];
 	char *t, *v;
 
 	/* Compute page shift in kB */
 	get_kb_shift();
 
-	dfile[0] = '\0';
+	dfile[0] = pcparchive[0] = '\0';
 
 #ifdef USE_NLS
 	/* Init National Language Support */
@@ -1566,6 +1593,17 @@ int main(int argc, char **argv)
 				else if (!strcmp(t, K_SHOWTOC)) {
 					flags |= S_F_SVG_SHOW_TOC;
 				}
+				else if (!strcmp(t, K_CUSTOMCOL)) {
+					palette = SVG_CUSTOM_COL_PALETTE;
+				}
+				else if (!strcmp(t, K_BWCOL)) {
+					palette = SVG_BW_COL_PALETTE;
+				}
+				else if (!strncmp(t, K_PCPARCHIVE, strlen(K_PCPARCHIVE))) {
+					v = t + strlen(K_PCPARCHIVE);
+					strncpy(pcparchive, v, MAX_FILE_LEN);
+					pcparchive[MAX_FILE_LEN - 1] = '\0';
+				}
 				else {
 					usage(argv[0]);
 				}
@@ -1665,6 +1703,13 @@ int main(int argc, char **argv)
 						format = F_JSON_OUTPUT;
 						break;
 
+					case 'l':
+						if (format) {
+							usage(argv[0]);
+						}
+						format = F_PCP_OUTPUT;
+						break;
+
 					case 'p':
 						if (format) {
 							usage(argv[0]);
@@ -1758,6 +1803,18 @@ int main(int argc, char **argv)
 		set_default_file(dfile, day_offset, -1);
 	}
 
+	/* PCP mode: If no archive file specified then use the name of the daily data file */
+	if (!pcparchive[0] && (format == F_PCP_OUTPUT)) {
+		strcpy(pcparchive, dfile);
+	}
+
+#ifndef HAVE_PCP
+	if (format == F_PCP_OUTPUT) {
+		fprintf(stderr, _("PCP support not compiled in\n"));
+		exit(1);
+	}
+#endif
+
 	if (tm_start.use && tm_end.use && (tm_end.tm_hour < tm_start.tm_hour)) {
 		tm_end.tm_hour += 24;
 	}
@@ -1796,7 +1853,7 @@ int main(int argc, char **argv)
 	}
 	else {
 		/* Read stats from file */
-		read_stats_from_file(dfile);
+		read_stats_from_file(dfile, pcparchive);
 	}
 
 	/* Free bitmaps */

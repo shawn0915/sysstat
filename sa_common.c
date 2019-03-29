@@ -1,6 +1,6 @@
 /*
  * sar and sadf common routines.
- * (C) 1999-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -1092,7 +1092,8 @@ int check_disk_reg(struct activity *a, int curr, int ref, int pos)
 			 */
 			if ((sdc->nr_ios < sdp->nr_ios) &&
 			    (sdc->rd_sect < sdp->rd_sect) &&
-			    (sdc->wr_sect < sdp->wr_sect))
+			    (sdc->wr_sect < sdp->wr_sect) &&
+			    (sdc->dc_sect < sdp->dc_sect))
 				/* Same device registered again */
 				return -2;
 
@@ -1276,24 +1277,33 @@ void swap_struct(unsigned int types_nr[], void *ps, int is64bit)
  * @f_size	Size of the structure containing statistics. This is the
  *		size of the structure *read from file*.
  * @g_size	Size of the structure expected by current sysstat version.
+ * @b_size	Size of the buffer pointed by @ps.
+ *
+ * RETURNS:
+ * -1 if an error has been encountered, or 0 otherwise.
  ***************************************************************************
  */
-void remap_struct(unsigned int gtypes_nr[], unsigned int ftypes_nr[],
-		  void *ps, unsigned int f_size, unsigned int g_size)
+int remap_struct(unsigned int gtypes_nr[], unsigned int ftypes_nr[],
+		 void *ps, unsigned int f_size, unsigned int g_size, size_t b_size)
 {
 	int d;
+	size_t n;
 
 	/* Sanity check */
 	if (MAP_SIZE(ftypes_nr) > f_size)
-		return;
+		return -1;
 
 	/* Remap [unsigned] long fields */
 	d = gtypes_nr[0] - ftypes_nr[0];
 	if (d) {
+		n = MINIMUM(f_size - ftypes_nr[0] * ULL_ALIGNMENT_WIDTH,
+			    g_size - gtypes_nr[0] * ULL_ALIGNMENT_WIDTH);
+		if ((ftypes_nr[0] * ULL_ALIGNMENT_WIDTH >= b_size) ||
+		    (gtypes_nr[0] * ULL_ALIGNMENT_WIDTH + n > b_size) ||
+		    (ftypes_nr[0] * ULL_ALIGNMENT_WIDTH + n > b_size))
+			return -1;
 		memmove(((char *) ps) + gtypes_nr[0] * ULL_ALIGNMENT_WIDTH,
-			((char *) ps) + ftypes_nr[0] * ULL_ALIGNMENT_WIDTH,
-			MINIMUM(f_size - ftypes_nr[0] * ULL_ALIGNMENT_WIDTH,
-				g_size - gtypes_nr[0] * ULL_ALIGNMENT_WIDTH));
+			((char *) ps) + ftypes_nr[0] * ULL_ALIGNMENT_WIDTH, n);
 		if (d > 0) {
 			memset(((char *) ps) + ftypes_nr[0] * ULL_ALIGNMENT_WIDTH,
 			       0, d * ULL_ALIGNMENT_WIDTH);
@@ -1302,14 +1312,21 @@ void remap_struct(unsigned int gtypes_nr[], unsigned int ftypes_nr[],
 	/* Remap [unsigned] int fields */
 	d = gtypes_nr[1] - ftypes_nr[1];
 	if (d) {
+		n = MINIMUM(f_size - ftypes_nr[0] * ULL_ALIGNMENT_WIDTH
+				   - ftypes_nr[1] * UL_ALIGNMENT_WIDTH,
+			    g_size - gtypes_nr[0] * ULL_ALIGNMENT_WIDTH
+				   - gtypes_nr[1] * UL_ALIGNMENT_WIDTH);
+		if ((gtypes_nr[0] * ULL_ALIGNMENT_WIDTH +
+		     ftypes_nr[1] * UL_ALIGNMENT_WIDTH >= b_size) ||
+		    (gtypes_nr[0] * ULL_ALIGNMENT_WIDTH +
+		     gtypes_nr[1] * UL_ALIGNMENT_WIDTH + n > b_size) ||
+		    (gtypes_nr[0] * ULL_ALIGNMENT_WIDTH +
+		     ftypes_nr[1] * UL_ALIGNMENT_WIDTH + n > b_size))
+			return -1;
 		memmove(((char *) ps) + gtypes_nr[0] * ULL_ALIGNMENT_WIDTH
 				      + gtypes_nr[1] * UL_ALIGNMENT_WIDTH,
 			((char *) ps) + gtypes_nr[0] * ULL_ALIGNMENT_WIDTH
-				      + ftypes_nr[1] * UL_ALIGNMENT_WIDTH,
-			MINIMUM(f_size - ftypes_nr[0] * ULL_ALIGNMENT_WIDTH
-				       - ftypes_nr[1] * UL_ALIGNMENT_WIDTH,
-				g_size - gtypes_nr[0] * ULL_ALIGNMENT_WIDTH
-				       - gtypes_nr[1] * UL_ALIGNMENT_WIDTH));
+				      + ftypes_nr[1] * UL_ALIGNMENT_WIDTH, n);
 		if (d > 0) {
 			memset(((char *) ps) + gtypes_nr[0] * ULL_ALIGNMENT_WIDTH
 					     + ftypes_nr[1] * UL_ALIGNMENT_WIDTH,
@@ -1319,18 +1336,28 @@ void remap_struct(unsigned int gtypes_nr[], unsigned int ftypes_nr[],
 	/* Remap possible fields (like strings of chars) following int fields */
 	d = gtypes_nr[2] - ftypes_nr[2];
 	if (d) {
+		n = MINIMUM(f_size - ftypes_nr[0] * ULL_ALIGNMENT_WIDTH
+				   - ftypes_nr[1] * UL_ALIGNMENT_WIDTH
+				   - ftypes_nr[2] * U_ALIGNMENT_WIDTH,
+			    g_size - gtypes_nr[0] * ULL_ALIGNMENT_WIDTH
+				   - gtypes_nr[1] * UL_ALIGNMENT_WIDTH
+				   - gtypes_nr[2] * U_ALIGNMENT_WIDTH);
+		if ((gtypes_nr[0] * ULL_ALIGNMENT_WIDTH +
+		     gtypes_nr[1] * UL_ALIGNMENT_WIDTH +
+		     ftypes_nr[2] * U_ALIGNMENT_WIDTH >= b_size) ||
+		    (gtypes_nr[0] * ULL_ALIGNMENT_WIDTH +
+		     gtypes_nr[1] * UL_ALIGNMENT_WIDTH +
+		     gtypes_nr[2] * U_ALIGNMENT_WIDTH + n > b_size) ||
+		    (gtypes_nr[0] * ULL_ALIGNMENT_WIDTH +
+		     gtypes_nr[1] * UL_ALIGNMENT_WIDTH +
+		     ftypes_nr[2] * U_ALIGNMENT_WIDTH + n > b_size))
+			return -1;
 		memmove(((char *) ps) + gtypes_nr[0] * ULL_ALIGNMENT_WIDTH
 				      + gtypes_nr[1] * UL_ALIGNMENT_WIDTH
 				      + gtypes_nr[2] * U_ALIGNMENT_WIDTH,
 			((char *) ps) + gtypes_nr[0] * ULL_ALIGNMENT_WIDTH
 				      + gtypes_nr[1] * UL_ALIGNMENT_WIDTH
-				      + ftypes_nr[2] * U_ALIGNMENT_WIDTH,
-			MINIMUM(f_size - ftypes_nr[0] * ULL_ALIGNMENT_WIDTH
-				       - ftypes_nr[1] * UL_ALIGNMENT_WIDTH
-				       - ftypes_nr[2] * U_ALIGNMENT_WIDTH,
-				g_size - gtypes_nr[0] * ULL_ALIGNMENT_WIDTH
-				       - gtypes_nr[1] * UL_ALIGNMENT_WIDTH
-				       - gtypes_nr[2] * U_ALIGNMENT_WIDTH));
+				      + ftypes_nr[2] * U_ALIGNMENT_WIDTH, n);
 		if (d > 0) {
 			memset(((char *) ps) + gtypes_nr[0] * ULL_ALIGNMENT_WIDTH
 					     + gtypes_nr[1] * UL_ALIGNMENT_WIDTH
@@ -1338,6 +1365,7 @@ void remap_struct(unsigned int gtypes_nr[], unsigned int ftypes_nr[],
 			       0, d * U_ALIGNMENT_WIDTH);
 		}
 	}
+	return 0;
 }
 
 /*
@@ -1400,19 +1428,20 @@ int sa_fread(int ifd, void *buffer, size_t size, int mode, int oneof)
  *		endianness.
  * @oneof	Set to EOF_CONT if an unexpected end of file should not make
  *		sadf stop. Default behavior is to stop on unexpected EOF.
+ * @b_size	@buffer size.
  *
  * OUT:
  * @record_hdr	Record header for current sample.
  *
  * RETURNS:
  * 1 if EOF has been reached,
- * 2 if an unexpected EOF has been reached,
+ * 2 if an error has been encountered (e.g. unexpected EOF),
  * 0 otherwise.
  ***************************************************************************
  */
 int read_record_hdr(int ifd, void *buffer, struct record_header *record_hdr,
 		    struct file_header *file_hdr, int arch_64, int endian_mismatch,
-		    int oneof)
+		    int oneof, size_t b_size)
 {
 	int rc;
 
@@ -1421,8 +1450,9 @@ int read_record_hdr(int ifd, void *buffer, struct record_header *record_hdr,
 		return rc;
 
 	/* Remap record header structure to that expected by current version */
-	remap_struct(rec_types_nr, file_hdr->rec_types_nr, buffer,
-		     file_hdr->rec_size, RECORD_HEADER_SIZE);
+	if (remap_struct(rec_types_nr, file_hdr->rec_types_nr, buffer,
+			 file_hdr->rec_size, RECORD_HEADER_SIZE, b_size) < 0)
+		return 2;
 	memcpy(record_hdr, buffer, RECORD_HEADER_SIZE);
 
 	/* Normalize endianness */
@@ -1530,7 +1560,7 @@ __nr_t read_nr_value(int ifd, char *file, struct file_magic *file_magic,
  *		sadf stop. Default behavior is to stop on unexpected EOF.
  *
  * RETURNS:
- * 2 if an unexpected EOF has been reached,
+ * 2 if an error has been encountered (e.g. unexpected EOF),
  * 0 otherwise.
  ***************************************************************************
  */
@@ -1643,9 +1673,10 @@ int read_file_stat_bunch(struct activity *act[], int curr, int ifd, int act_nr,
 
 		/* Remap structure's fields to those known by current sysstat version */
 		for (j = 0; j < (nr_value * act[p]->nr2); j++) {
-			remap_struct(act[p]->gtypes_nr, act[p]->ftypes_nr,
-				     (char *) act[p]->buf[curr] + j * act[p]->msize,
-				     act[p]->fsize, act[p]->msize);
+			if (remap_struct(act[p]->gtypes_nr, act[p]->ftypes_nr,
+					 (char *) act[p]->buf[curr] + j * act[p]->msize,
+					 act[p]->fsize, act[p]->msize, act[p]->msize) < 0)
+				return 2;
 		}
 	}
 
@@ -1768,6 +1799,7 @@ int sa_open_read_magic(int *fd, char *dfile, struct file_magic *file_magic,
  * IN:
  * @dfile	Name of system activity data file.
  * @act		Array of activities.
+ * @flags	Flags for common options and system state.
  * @ignore	Set to 1 if a true sysstat activity file but with a bad
  *		format should not yield an error message. Used with
  *		sadf -H (sadf -c doesn't call check_file_actlst() function).
@@ -1785,7 +1817,7 @@ int sa_open_read_magic(int *fd, char *dfile, struct file_magic *file_magic,
  * @arch_64	TRUE if file's data come from a 64 bit machine.
  ***************************************************************************
  */
-void check_file_actlst(int *ifd, char *dfile, struct activity *act[],
+void check_file_actlst(int *ifd, char *dfile, struct activity *act[], unsigned int flags,
 		       struct file_magic *file_magic, struct file_header *file_hdr,
 		       struct file_activity **file_actlst, unsigned int id_seq[],
 		       int ignore, int *endian_mismatch, int *arch_64)
@@ -1829,7 +1861,7 @@ void check_file_actlst(int *ifd, char *dfile, struct activity *act[],
 	 * then copy its contents to the expected  structure.
 	 */
 	remap_struct(hdr_types_nr, file_magic->hdr_types_nr, buffer,
-		     file_magic->header_size, FILE_HEADER_SIZE);
+		     file_magic->header_size, FILE_HEADER_SIZE, file_magic->header_size);
 	memcpy(file_hdr, buffer, FILE_HEADER_SIZE);
 	free(buffer);
 	buffer = NULL;
@@ -1877,8 +1909,9 @@ void check_file_actlst(int *ifd, char *dfile, struct activity *act[],
 		* smaller than FILE_ACTIVITY_SIZE. Remap the fields of the file's structure
 		* then copy its contents to the expected structure.
 		*/
-		remap_struct(act_types_nr, file_hdr->act_types_nr, buffer,
-			     file_hdr->act_size, FILE_ACTIVITY_SIZE);
+		if (remap_struct(act_types_nr, file_hdr->act_types_nr, buffer,
+			     file_hdr->act_size, FILE_ACTIVITY_SIZE, file_hdr->act_size) < 0)
+			goto format_error;
 		memcpy(fal, buffer, FILE_ACTIVITY_SIZE);
 
 		/* Normalize endianness for file_activity structures */
@@ -1888,7 +1921,7 @@ void check_file_actlst(int *ifd, char *dfile, struct activity *act[],
 
 		/*
 		 * Every activity, known or unknown, should have
-		 * at least one item and sub-item.
+		 * at least one item and sub-item, and a positive size value.
 		 * Also check that the number of items and sub-items
 		 * doesn't exceed a max value. This is necessary
 		 * because we will use @nr and @nr2 to
@@ -1898,7 +1931,8 @@ void check_file_actlst(int *ifd, char *dfile, struct activity *act[],
 		 * activities which have each a specific max value.
 		 */
 		if ((fal->nr < 1) || (fal->nr2 < 1) ||
-		    (fal->nr > NR_MAX) || (fal->nr2 > NR2_MAX)) {
+		    (fal->nr > NR_MAX) || (fal->nr2 > NR2_MAX) ||
+		    (fal->size <= 0)) {
 #ifdef DEBUG
 			fprintf(stderr, "%s: id=%d nr=%d nr2=%d\n",
 				__FUNCTION__, fal->id, fal->nr, fal->nr2);
@@ -2010,7 +2044,7 @@ void check_file_actlst(int *ifd, char *dfile, struct activity *act[],
 	 * NB: Error is ignored if we only want to display
 	 * datafile header (sadf -H).
 	 */
-	if (!get_activity_nr(act, AO_SELECTED, COUNT_ACTIVITIES) && !ignore) {
+	if (!get_activity_nr(act, AO_SELECTED, COUNT_ACTIVITIES) && !DISPLAY_HDR_ONLY(flags)) {
 		fprintf(stderr, _("Requested activities not available in file %s\n"),
 			dfile);
 		close(*ifd);

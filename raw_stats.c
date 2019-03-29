@@ -1,6 +1,6 @@
 /*
  * raw_stats.c: Functions used by sar to display statistics in raw format.
- * (C) 1999-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -334,9 +334,13 @@ __print_funct_t raw_print_io_stats(struct activity *a, char *timestr, int curr)
 	printf(" %s", pfield(NULL, 0));
 	pval(sip->dk_drive_wio, sic->dk_drive_wio);
 	printf(" %s", pfield(NULL, 0));
+	pval(sip->dk_drive_dio, sic->dk_drive_dio);
+	printf(" %s", pfield(NULL, 0));
 	pval(sip->dk_drive_rblk, sic->dk_drive_rblk);
 	printf(" %s", pfield(NULL, 0));
 	pval(sip->dk_drive_wblk, sic->dk_drive_wblk);
+	printf(" %s", pfield(NULL, 0));
+	pval(sip->dk_drive_dblk, sic->dk_drive_dblk);
 	printf("\n");
 }
 
@@ -559,6 +563,14 @@ __print_funct_t raw_print_disk_stats(struct activity *a, char *timestr, int curr
 		pval((unsigned long long) sdp->rd_sect, (unsigned long long) sdc->rd_sect);
 		printf(" %s", pfield(NULL, 0));
 		pval((unsigned long long) sdp->wr_sect, (unsigned long long) sdc->wr_sect);
+		printf(" %s", pfield(NULL, 0));
+		pval((unsigned long long) sdp->dc_sect, (unsigned long long) sdc->dc_sect);
+		printf(" rd_ticks");
+		pval((unsigned long long) sdp->rd_ticks, (unsigned long long) sdc->rd_ticks);
+		printf(" wr_ticks");
+		pval((unsigned long long) sdp->wr_ticks, (unsigned long long) sdc->wr_ticks);
+		printf(" dc_ticks");
+		pval((unsigned long long) sdp->dc_ticks, (unsigned long long) sdc->dc_ticks);
 		printf(" tot_ticks");
 		pval((unsigned long long) sdp->tot_ticks, (unsigned long long) sdc->tot_ticks);
 		pfield(NULL, 0); /* Skip areq-sz */

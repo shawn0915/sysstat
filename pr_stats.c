@@ -1,6 +1,6 @@
 /*
  * pr_stats.c: Functions used by sar to display statistics
- * (C) 1999-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -37,7 +37,7 @@
 #endif
 
 extern unsigned int flags;
-extern int  dis;
+extern int  dish;
 extern char timestamp[][TIMESTAMP_LEN];
 extern unsigned long avg_count;
 
@@ -46,7 +46,7 @@ extern unsigned long avg_count;
  * Display current activity header line.
  *
  * IN:
- * @timestamp	Timestamp for previous stat sample.
+ * @p_timestamp	Timestamp for previous stat sample.
  * @a		Activity structure.
  * @pos		Index in @.hdr_line string, 0 being the first one (header
  * 		are delimited by the '|' character).
@@ -56,7 +56,7 @@ extern unsigned long avg_count;
  * @vwidth	Column width for stats values.
  ***************************************************************************
  */
-void print_hdr_line(char *timestamp, struct activity *a, int pos, int iwidth, int vwidth)
+void print_hdr_line(char *p_timestamp, struct activity *a, int pos, int iwidth, int vwidth)
 {
 	char hline[HEADER_LINE_LEN] = "";
 	char *hl, *tk, *it = NULL;
@@ -70,7 +70,7 @@ void print_hdr_line(char *timestamp, struct activity *a, int pos, int iwidth, in
 		/* Bad @pos arg given to function */
 		return;
 
-	printf("\n%-11s", timestamp);
+	printf("\n%-11s", p_timestamp);
 
 	if (strchr(hl, '&')) {
 		j = strcspn(hl, "&");
@@ -128,7 +128,7 @@ __print_funct_t print_cpu_stats(struct activity *a, int prev, int curr,
 	struct stats_cpu *scc, *scp;
 	unsigned char offline_cpu_bitmap[BITMAP_SIZE(NR_CPUS)] = {0};
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST + DISPLAY_CPU_ALL(a->opt_flags), 7, 9);
 	}
 
@@ -283,7 +283,7 @@ __print_funct_t print_pcsw_stats(struct activity *a, int prev, int curr,
 		*spc = (struct stats_pcsw *) a->buf[curr],
 		*spp = (struct stats_pcsw *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -311,7 +311,7 @@ __print_funct_t print_irq_stats(struct activity *a, int prev, int curr,
 	int i;
 	struct stats_irq *sic, *sip;
 
-	if (dis || DISPLAY_ZERO_OMIT(flags)) {
+	if (dish || DISPLAY_ZERO_OMIT(flags)) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -372,7 +372,7 @@ __print_funct_t print_swap_stats(struct activity *a, int prev, int curr,
 		*ssc = (struct stats_swap *) a->buf[curr],
 		*ssp = (struct stats_swap *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -401,7 +401,7 @@ __print_funct_t print_paging_stats(struct activity *a, int prev, int curr,
 		*spc = (struct stats_paging *) a->buf[curr],
 		*spp = (struct stats_paging *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -443,7 +443,7 @@ __print_funct_t print_io_stats(struct activity *a, int prev, int curr,
 		*sic = (struct stats_io *) a->buf[curr],
 		*sip = (struct stats_io *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -454,17 +454,21 @@ __print_funct_t print_io_stats(struct activity *a, int prev, int curr,
 	 * We display 0.0 in this case though we should rather tell
 	 * the user that the value cannot be calculated here.
 	 */
-	cprintf_f(NO_UNIT, 5, 9, 2,
+	cprintf_f(NO_UNIT, 7, 9, 2,
 		  sic->dk_drive < sip->dk_drive ? 0.0 :
 		  S_VALUE(sip->dk_drive, sic->dk_drive, itv),
 		  sic->dk_drive_rio < sip->dk_drive_rio ? 0.0 :
 		  S_VALUE(sip->dk_drive_rio, sic->dk_drive_rio, itv),
 		  sic->dk_drive_wio < sip->dk_drive_wio ? 0.0 :
 		  S_VALUE(sip->dk_drive_wio, sic->dk_drive_wio, itv),
+		  sic->dk_drive_dio < sip->dk_drive_dio ? 0.0 :
+		  S_VALUE(sip->dk_drive_dio, sic->dk_drive_dio, itv),
 		  sic->dk_drive_rblk < sip->dk_drive_rblk ? 0.0 :
 		  S_VALUE(sip->dk_drive_rblk, sic->dk_drive_rblk, itv),
 		  sic->dk_drive_wblk < sip->dk_drive_wblk ? 0.0 :
-		  S_VALUE(sip->dk_drive_wblk, sic->dk_drive_wblk, itv));
+		  S_VALUE(sip->dk_drive_wblk, sic->dk_drive_wblk, itv),
+		  sic->dk_drive_dblk < sip->dk_drive_dblk ? 0.0 :
+		  S_VALUE(sip->dk_drive_dblk, sic->dk_drive_dblk, itv));
 	printf("\n");
 }
 
@@ -511,7 +515,7 @@ void stub_print_memory_stats(struct activity *a, int prev, int curr, int dispavg
 	}
 
 	if (DISPLAY_MEMORY(a->opt_flags)) {
-		if (dis) {
+		if (dish) {
 			print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 		}
 
@@ -619,7 +623,7 @@ void stub_print_memory_stats(struct activity *a, int prev, int curr, int dispavg
 	}
 
 	if (DISPLAY_SWAP(a->opt_flags)) {
-		if (dis) {
+		if (dish) {
 			print_hdr_line(timestamp[!curr], a, SECOND, 0, 9);
 		}
 
@@ -735,7 +739,7 @@ void stub_print_ktables_stats(struct activity *a, int curr, int dispavg)
 		avg_pty_nr      = 0;
 
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -830,7 +834,7 @@ void stub_print_queue_stats(struct activity *a, int curr, int dispavg)
 		avg_load_avg_15   = 0,
 		avg_procs_blocked = 0;
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -928,7 +932,7 @@ __print_funct_t print_serial_stats(struct activity *a, int prev, int curr,
 	int i, j, j0, found;
 	struct stats_serial *ssc, *ssp;
 
-	if (dis || DISPLAY_ZERO_OMIT(flags)) {
+	if (dish || DISPLAY_ZERO_OMIT(flags)) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1021,7 +1025,7 @@ __print_funct_t print_disk_stats(struct activity *a, int prev, int curr,
 		unit = UNIT_KILOBYTE;
 	}
 
-	if (dis || DISPLAY_ZERO_OMIT(flags)) {
+	if (dish || DISPLAY_ZERO_OMIT(flags)) {
 		print_hdr_line(timestamp[!curr], a, FIRST, DISPLAY_HUMAN_READ(flags) ? -1 : 0, 9);
 	}
 
@@ -1068,9 +1072,10 @@ __print_funct_t print_disk_stats(struct activity *a, int prev, int curr,
 		}
 		cprintf_f(NO_UNIT, 1, 9, 2,
 			  S_VALUE(sdp->nr_ios, sdc->nr_ios,  itv));
-		cprintf_f(unit, 2, 9, 2,
+		cprintf_f(unit, 3, 9, 2,
 			  S_VALUE(sdp->rd_sect, sdc->rd_sect, itv) / 2,
-			  S_VALUE(sdp->wr_sect, sdc->wr_sect, itv) / 2);
+			  S_VALUE(sdp->wr_sect, sdc->wr_sect, itv) / 2,
+			  S_VALUE(sdp->dc_sect, sdc->dc_sect, itv) / 2);
 		/* See iostat for explanations */
 		cprintf_f(unit, 1, 9, 2,
 			  xds.arqsz / 2);
@@ -1112,7 +1117,7 @@ __print_funct_t print_net_dev_stats(struct activity *a, int prev, int curr,
 		unit = UNIT_BYTE;
 	}
 
-	if (dis || DISPLAY_ZERO_OMIT(flags)) {
+	if (dish || DISPLAY_ZERO_OMIT(flags)) {
 		print_hdr_line(timestamp[!curr], a, FIRST, DISPLAY_HUMAN_READ(flags) ? -1 : 0, 9);
 	}
 
@@ -1192,7 +1197,7 @@ __print_funct_t print_net_edev_stats(struct activity *a, int prev, int curr,
 
 	memset(&snedzero, 0, STATS_NET_EDEV_SIZE);
 
-	if (dis || DISPLAY_ZERO_OMIT(flags)) {
+	if (dish || DISPLAY_ZERO_OMIT(flags)) {
 		print_hdr_line(timestamp[!curr], a, FIRST, DISPLAY_HUMAN_READ(flags) ? -1 : 0, 9);
 	}
 
@@ -1266,7 +1271,7 @@ __print_funct_t print_net_nfs_stats(struct activity *a, int prev, int curr,
 		*snnc = (struct stats_net_nfs *) a->buf[curr],
 		*snnp = (struct stats_net_nfs *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1299,7 +1304,7 @@ __print_funct_t print_net_nfsd_stats(struct activity *a, int prev, int curr,
 		*snndc = (struct stats_net_nfsd *) a->buf[curr],
 		*snndp = (struct stats_net_nfsd *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1342,7 +1347,7 @@ void stub_print_net_sock_stats(struct activity *a, int curr, int dispavg)
 		avg_frag_inuse = 0,
 		avg_tcp_tw     = 0;
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1436,7 +1441,7 @@ __print_funct_t print_net_ip_stats(struct activity *a, int prev, int curr,
 		*snic = (struct stats_net_ip *) a->buf[curr],
 		*snip = (struct stats_net_ip *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1471,7 +1476,7 @@ __print_funct_t print_net_eip_stats(struct activity *a, int prev, int curr,
 		*sneic = (struct stats_net_eip *) a->buf[curr],
 		*sneip = (struct stats_net_eip *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1506,7 +1511,7 @@ __print_funct_t print_net_icmp_stats(struct activity *a, int prev, int curr,
 		*snic = (struct stats_net_icmp *) a->buf[curr],
 		*snip = (struct stats_net_icmp *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1547,7 +1552,7 @@ __print_funct_t print_net_eicmp_stats(struct activity *a, int prev, int curr,
 		*sneic = (struct stats_net_eicmp *) a->buf[curr],
 		*sneip = (struct stats_net_eicmp *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1586,7 +1591,7 @@ __print_funct_t print_net_tcp_stats(struct activity *a, int prev, int curr,
 		*sntc = (struct stats_net_tcp *) a->buf[curr],
 		*sntp = (struct stats_net_tcp *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1617,7 +1622,7 @@ __print_funct_t print_net_etcp_stats(struct activity *a, int prev, int curr,
 		*snetc = (struct stats_net_etcp *) a->buf[curr],
 		*snetp = (struct stats_net_etcp *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1649,7 +1654,7 @@ __print_funct_t print_net_udp_stats(struct activity *a, int prev, int curr,
 		*snuc = (struct stats_net_udp *) a->buf[curr],
 		*snup = (struct stats_net_udp *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1683,7 +1688,7 @@ void stub_print_net_sock6_stats(struct activity *a, int curr, int dispavg)
 		avg_raw6_inuse  = 0,
 		avg_frag6_inuse = 0;
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1770,7 +1775,7 @@ __print_funct_t print_net_ip6_stats(struct activity *a, int prev, int curr,
 		*snic = (struct stats_net_ip6 *) a->buf[curr],
 		*snip = (struct stats_net_ip6 *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1807,7 +1812,7 @@ __print_funct_t print_net_eip6_stats(struct activity *a, int prev, int curr,
 		*sneic = (struct stats_net_eip6 *) a->buf[curr],
 		*sneip = (struct stats_net_eip6 *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1845,7 +1850,7 @@ __print_funct_t print_net_icmp6_stats(struct activity *a, int prev, int curr,
 		*snic = (struct stats_net_icmp6 *) a->buf[curr],
 		*snip = (struct stats_net_icmp6 *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1889,7 +1894,7 @@ __print_funct_t print_net_eicmp6_stats(struct activity *a, int prev, int curr,
 		*sneic = (struct stats_net_eicmp6 *) a->buf[curr],
 		*sneip = (struct stats_net_eicmp6 *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1927,7 +1932,7 @@ __print_funct_t print_net_udp6_stats(struct activity *a, int prev, int curr,
 		*snuc = (struct stats_net_udp6 *) a->buf[curr],
 		*snup = (struct stats_net_udp6 *) a->buf[prev];
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -1970,7 +1975,7 @@ void stub_print_pwr_cpufreq_stats(struct activity *a, int curr, int dispavg)
 		nr_alloc = a->nr[curr];
 	}
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 7, 9);
 	}
 
@@ -2106,7 +2111,7 @@ void stub_print_pwr_fan_stats(struct activity *a, int curr, int dispavg)
 		nr_alloc = a->nr[curr];
 	}
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, -2, 9);
 	}
 
@@ -2214,7 +2219,7 @@ void stub_print_pwr_temp_stats(struct activity *a, int curr, int dispavg)
 		nr_alloc = a->nr[curr];
 	}
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, -2, 9);
 	}
 
@@ -2330,7 +2335,7 @@ void stub_print_pwr_in_stats(struct activity *a, int curr, int dispavg)
 		nr_alloc = a->nr[curr];
 	}
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, -2, 9);
 	}
 
@@ -2436,7 +2441,7 @@ void stub_print_huge_stats(struct activity *a, int curr, int dispavg)
 		unit = UNIT_KILOBYTE;
 	}
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 0, 9);
 	}
 
@@ -2535,7 +2540,7 @@ void print_pwr_wghfreq_stats(struct activity *a, int prev, int curr,
 	struct stats_pwr_wghfreq *spc, *spp, *spc_k, *spp_k;
 	unsigned long long tis, tisfreq;
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 7, 9);
 	}
 
@@ -2613,7 +2618,7 @@ void stub_print_pwr_usb_stats(struct activity *a, int curr, int dispavg)
 	char fmt[16];
 	struct stats_pwr_usb *suc, *sum;
 
-	if (dis) {
+	if (dish) {
 		printf("\n%-11s     BUS  idvendor    idprod  maxpower",
 		       (dispavg ? _("Summary:") : timestamp[!curr]));
 		printf(" %-*s product\n", MAX_MANUF_LEN - 1, "manufact");
@@ -2726,7 +2731,7 @@ __print_funct_t stub_print_filesystem_stats(struct activity *a, int prev, int cu
 		unit = UNIT_BYTE;
 	}
 
-	if (dis || DISPLAY_ZERO_OMIT(flags)) {
+	if (dish || DISPLAY_ZERO_OMIT(flags)) {
 		print_hdr_line((dispavg ? _("Summary:") : timestamp[!curr]),
 			       a, FIRST + DISPLAY_MOUNT(a->opt_flags), -1, 9);
 	}
@@ -2876,7 +2881,7 @@ __print_funct_t print_fchost_stats(struct activity *a, int prev, int curr,
 	int i, j, j0, found;
 	struct stats_fchost *sfcc, *sfcp;
 
-	if (dis) {
+	if (dish) {
 		print_hdr_line(timestamp[!curr], a, FIRST, -1, 9);
 	}
 
@@ -2948,7 +2953,7 @@ __print_funct_t print_softnet_stats(struct activity *a, int prev, int curr,
 		*ssnp = (struct stats_softnet *) a->buf[prev];
 	unsigned char offline_cpu_bitmap[BITMAP_SIZE(NR_CPUS)] = {0};
 
-	if (dis || DISPLAY_ZERO_OMIT(flags)) {
+	if (dish || DISPLAY_ZERO_OMIT(flags)) {
 		print_hdr_line(timestamp[!curr], a, FIRST, 7, 9);
 	}
 

@@ -1,4 +1,4 @@
-.TH SAR 1 "NOVEMBER 2018" Linux "Linux User's Manual" -*- nroff -*-
+.TH SAR 1 "DECEMBER 2018" Linux "Linux User's Manual" -*- nroff -*-
 .SH NAME
 sar \- Collect, report, or save system activity information.
 .SH SYNOPSIS
@@ -256,6 +256,11 @@ Total number of read requests per second issued to physical devices.
 Total number of write requests per second issued to physical devices.
 .RE
 
+.B dtps
+.RS
+Total number of discard requests per second issued to physical devices.
+.RE
+
 .B bread/s
 .RS
 Total amount of data read from the devices in blocks per second.
@@ -266,6 +271,11 @@ and therefore have a size of 512 bytes.
 .B bwrtn/s
 .RS
 Total amount of data written to devices in blocks per second.
+.RE
+
+.B bdscd/s
+.RS
+Total amount of data discarded for devices in blocks per second.
 .RE
 .RE
 .IP -C
@@ -319,6 +329,11 @@ Number of kilobytes read from the device per second.
 .B wkB/s
 .RS
 Number of kilobytes written to the device per second.
+.RE
+
+.B dkB/s
+.RS
+Number of kilobytes discarded for the device per second.
 .RE
 
 .B areq-sz

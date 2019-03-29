@@ -1,6 +1,6 @@
 /*
  * json_stats.c: Funtions used by sadf to display statistics in JSON format.
- * (C) 1999-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -435,7 +435,10 @@ __print_funct_t json_print_io_stats(struct activity *a, int curr, int tab,
 		 "\"bread\": %.2f}, "
 		 "\"io-writes\": {"
 		 "\"wtps\": %.2f, "
-		 "\"bwrtn\": %.2f}}",
+		 "\"bwrtn\": %.2f}, "
+		 "\"io-discard\": {"
+		 "\"dtps\": %.2f, "
+		 "\"bdscd\": %.2f}}",
 		 /*
 		  * If we get negative values, this is probably because
 		  * one or more devices/filesystems have been unmounted.
@@ -451,7 +454,11 @@ __print_funct_t json_print_io_stats(struct activity *a, int curr, int tab,
 		 sic->dk_drive_wio < sip->dk_drive_wio ? 0.0 :
 		 S_VALUE(sip->dk_drive_wio, sic->dk_drive_wio, itv),
 		 sic->dk_drive_wblk < sip->dk_drive_wblk ? 0.0 :
-		 S_VALUE(sip->dk_drive_wblk, sic->dk_drive_wblk, itv));
+		 S_VALUE(sip->dk_drive_wblk, sic->dk_drive_wblk, itv),
+		 sic->dk_drive_dio < sip->dk_drive_dio ? 0.0 :
+		 S_VALUE(sip->dk_drive_dio, sic->dk_drive_dio, itv),
+		 sic->dk_drive_dblk < sip->dk_drive_dblk ? 0.0 :
+		 S_VALUE(sip->dk_drive_dblk, sic->dk_drive_dblk, itv));
 }
 
 /*
@@ -748,8 +755,10 @@ __print_funct_t json_print_disk_stats(struct activity *a, int curr, int tab,
 			 "\"tps\": %.2f, "
 			 "\"rd_sec\": %.2f, "
 			 "\"wr_sec\": %.2f, "
+			 "\"dc_sec\": %.2f, "
 			 "\"rkB\": %.2f, "
 			 "\"wkB\": %.2f, "
+			 "\"dkB\": %.2f, "
 			 "\"avgrq-sz\": %.2f, "
 			 "\"areq-sz\": %.2f, "
 			 "\"avgqu-sz\": %.2f, "
@@ -761,8 +770,10 @@ __print_funct_t json_print_disk_stats(struct activity *a, int curr, int tab,
 			 S_VALUE(sdp->nr_ios, sdc->nr_ios, itv),
 			 S_VALUE(sdp->rd_sect, sdc->rd_sect, itv), /* Unit = sectors (for backward compatibility) */
 			 S_VALUE(sdp->wr_sect, sdc->wr_sect, itv),
+			 S_VALUE(sdp->dc_sect, sdc->dc_sect, itv),
 			 S_VALUE(sdp->rd_sect, sdc->rd_sect, itv) / 2,
 			 S_VALUE(sdp->wr_sect, sdc->wr_sect, itv) / 2,
+			 S_VALUE(sdp->dc_sect, sdc->dc_sect, itv) / 2,
 			 /* See iostat for explanations */
 			 xds.arqsz,	/* Unit = sectors (for backward compatibility) */
 			 xds.arqsz / 2,

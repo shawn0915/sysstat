@@ -1,6 +1,6 @@
 /*
  * rd_stats.h: Include file used to read system statistics
- * (C) 1999-2018 by Sebastien Godard (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien Godard (sysstat <at> orange.fr)
  */
 
 #ifndef _RD_STATS_H
@@ -179,10 +179,12 @@ struct stats_io {
 	unsigned long long dk_drive_wio;
 	unsigned long long dk_drive_rblk;
 	unsigned long long dk_drive_wblk;
+	unsigned long long dk_drive_dio;
+	unsigned long long dk_drive_dblk;
 };
 
 #define STATS_IO_SIZE	(sizeof(struct stats_io))
-#define STATS_IO_ULL	5
+#define STATS_IO_ULL	7
 #define STATS_IO_UL	0
 #define STATS_IO_U	0
 
@@ -261,18 +263,20 @@ struct stats_disk {
 	unsigned long long nr_ios;
 	unsigned long	   rd_sect	__attribute__ ((aligned (8)));
 	unsigned long	   wr_sect	__attribute__ ((aligned (8)));
+	unsigned long	   dc_sect	__attribute__ ((aligned (8)));
 	unsigned int	   rd_ticks	__attribute__ ((aligned (8)));
 	unsigned int	   wr_ticks;
 	unsigned int	   tot_ticks;
 	unsigned int	   rq_ticks;
 	unsigned int	   major;
 	unsigned int	   minor;
+	unsigned int	   dc_ticks;
 };
 
 #define STATS_DISK_SIZE	(sizeof(struct stats_disk))
 #define STATS_DISK_ULL	1
-#define STATS_DISK_UL	2
-#define STATS_DISK_U	6
+#define STATS_DISK_UL	3
+#define STATS_DISK_U	7
 
 /* Structure for network interfaces statistics */
 struct stats_net_dev {

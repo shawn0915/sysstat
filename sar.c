@@ -1,6 +1,6 @@
 /*
  * sar: report system activity
- * (C) 1999-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -48,7 +48,7 @@ char *sccsid(void) { return (SCCSID); }
 long interval = -1, count = 0;
 
 /* TRUE if a header line must be printed */
-int dis = TRUE;
+int dish = TRUE;
 /* TRUE if data read from file don't match current machine's endianness */
 int endian_mismatch = FALSE;
 /* TRUE if file's data come from a 64 bit machine */
@@ -548,7 +548,7 @@ void write_stats_startup(int curr)
 	}
 
 	flags |= S_F_SINCE_BOOT;
-	dis = TRUE;
+	dish = TRUE;
 
 	write_stats(curr, USE_SADC, &count, NO_TM_START, NO_TM_END, NO_RESET,
 		    ALL_ACTIVITIES, TRUE);
@@ -601,7 +601,7 @@ int sa_read(void *buffer, size_t size)
  * @cur_date	Date string of current restart message (unused here).
  * @cur_time	Time string of current restart message.
  * @utc		True if @cur_time is expressed in UTC (unused here).
- * @file_hdr	System activity file standard header (unused here).
+ * @file_hdr	System activity file standard header.
  ***************************************************************************
  */
 __printf_funct_t print_sar_restart(int *tab, int action, char *cur_date, char *cur_time,
@@ -727,6 +727,7 @@ void read_sadc_stat_bunch(int curr)
  * @endian_mismatch
  *		TRUE if file's data don't match current machine's endianness.
  * @arch_64	TRUE if file's data come from a 64 bit machine.
+ * @b_size	Size of @rec_hdr_tmp buffer.
  *
  * OUT:
  * @curr	Index in array for next sample statistics.
@@ -740,7 +741,7 @@ void handle_curr_act_stats(int ifd, off_t fpos, int *curr, long *cnt, int *eosaf
 			   int rows, unsigned int act_id, int *reset,
 			   struct file_activity *file_actlst, char *file,
 			   struct file_magic *file_magic, void *rec_hdr_tmp,
-			   int endian_mismatch, int arch_64)
+			   int endian_mismatch, int arch_64, size_t b_size)
 {
 	int p, reset_cd;
 	unsigned long lines = 0;
@@ -774,7 +775,7 @@ void handle_curr_act_stats(int ifd, off_t fpos, int *curr, long *cnt, int *eosaf
 		 * Start with reading current sample's record header.
 		 */
 		*eosaf = read_record_hdr(ifd, rec_hdr_tmp, &record_hdr[*curr],
-					 &file_hdr, arch_64, endian_mismatch, UEOF_STOP);
+					 &file_hdr, arch_64, endian_mismatch, UEOF_STOP, b_size);
 		rtype = record_hdr[*curr].record_type;
 
 		if (!*eosaf && (rtype != R_RESTART) && (rtype != R_COMMENT)) {
@@ -785,10 +786,10 @@ void handle_curr_act_stats(int ifd, off_t fpos, int *curr, long *cnt, int *eosaf
 
 		if ((lines >= rows) || !lines) {
 			lines = 0;
-			dis = 1;
+			dish = 1;
 		}
 		else
-			dis = 0;
+			dish = 0;
 
 		if (!*eosaf && (rtype != R_RESTART)) {
 
@@ -986,7 +987,7 @@ void read_stats_from_file(char from_file[])
 	rows = get_win_height();
 
 	/* Read file headers and activity list */
-	check_file_actlst(&ifd, from_file, act, &file_magic, &file_hdr,
+	check_file_actlst(&ifd, from_file, act, flags, &file_magic, &file_hdr,
 			  &file_actlst, id_seq, FALSE, &endian_mismatch, &arch_64);
 
 	/* Perform required allocations */
@@ -1003,7 +1004,7 @@ void read_stats_from_file(char from_file[])
 		 */
 		do {
 			if (read_record_hdr(ifd, rec_hdr_tmp, &record_hdr[0], &file_hdr,
-					    arch_64, endian_mismatch, UEOF_STOP)) {
+					    arch_64, endian_mismatch, UEOF_STOP, sizeof(rec_hdr_tmp))) {
 				/* End of sa data file */
 				return;
 			}
@@ -1069,7 +1070,7 @@ void read_stats_from_file(char from_file[])
 				handle_curr_act_stats(ifd, fpos, &curr, &cnt, &eosaf, rows,
 						      act[p]->id, &reset, file_actlst,
 						      from_file, &file_magic, rec_hdr_tmp,
-						      endian_mismatch, arch_64);
+						      endian_mismatch, arch_64, sizeof(rec_hdr_tmp));
 			}
 			else {
 				unsigned int optf, msk;
@@ -1083,7 +1084,7 @@ void read_stats_from_file(char from_file[])
 						handle_curr_act_stats(ifd, fpos, &curr, &cnt, &eosaf,
 								      rows, act[p]->id, &reset, file_actlst,
 								      from_file, &file_magic, rec_hdr_tmp,
-								      endian_mismatch, arch_64);
+								      endian_mismatch, arch_64, sizeof(rec_hdr_tmp));
 						act[p]->opt_flags = optf;
 					}
 				}
@@ -1095,7 +1096,7 @@ void read_stats_from_file(char from_file[])
 			do {
 				/* Read next record header */
 				eosaf = read_record_hdr(ifd, rec_hdr_tmp, &record_hdr[curr],
-							&file_hdr, arch_64, endian_mismatch, UEOF_STOP);
+							&file_hdr, arch_64, endian_mismatch, UEOF_STOP, sizeof(rec_hdr_tmp));
 				rtype = record_hdr[curr].record_type;
 
 				if (!eosaf && (rtype != R_RESTART) && (rtype != R_COMMENT)) {
@@ -1198,8 +1199,8 @@ void read_stats(void)
 
 		/* Print results */
 		if (!dis_hdr) {
-			dis = lines / rows;
-			if (dis) {
+			dish = lines / rows;
+			if (dish) {
 				lines %= rows;
 			}
 			lines++;
@@ -1227,7 +1228,7 @@ void read_stats(void)
 	 * At least one line of stats must have been displayed for this.
 	 * (There may be no lines at all if we press Ctrl/C immediately).
 	 */
-	dis = dis_hdr;
+	dish = dis_hdr;
 	if (avg_count) {
 		write_stats_avg(curr, USE_SADC, ALL_ACTIVITIES);
 	}

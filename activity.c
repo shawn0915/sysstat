@@ -1,6 +1,6 @@
 /*
  * activity.c: Define system activities available for sar/sadc.
- * (C) 1999-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -31,6 +31,7 @@
 #include "json_stats.h"
 #include "svg_stats.h"
 #include "raw_stats.h"
+#include "pcp_stats.h"
 #endif
 
 /*
@@ -67,7 +68,8 @@ struct act_bitmap irq_bitmap = {
 struct activity cpu_act = {
 	.id		= A_CPU,
 	.options	= AO_COLLECTED + AO_COUNTED + AO_PERSISTENT +
-			  AO_MULTIPLE_OUTPUTS + AO_GRAPH_PER_ITEM,
+			  AO_MULTIPLE_OUTPUTS + AO_GRAPH_PER_ITEM +
+			  AO_ALWAYS_COUNTED,
 	.magic		= ACTIVITY_MAGIC_BASE + 1,
 	.group		= G_DEFAULT,
 #ifdef SOURCE_SADC
@@ -91,6 +93,7 @@ struct activity cpu_act = {
 	.f_json_print	= json_print_cpu_stats,
 	.f_svg_print	= svg_print_cpu_stats,
 	.f_raw_print	= raw_print_cpu_stats,
+	.f_pcp_print	= pcp_print_cpu_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "CPU utilization",
@@ -136,6 +139,7 @@ struct activity pcsw_act = {
 	.f_json_print	= json_print_pcsw_stats,
 	.f_svg_print	= svg_print_pcsw_stats,
 	.f_raw_print	= raw_print_pcsw_stats,
+	.f_pcp_print	= pcp_print_pcsw_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "Task creation and switching activity",
@@ -181,6 +185,7 @@ struct activity irq_act = {
 	.f_json_print	= json_print_irq_stats,
 	.f_svg_print	= NULL,
 	.f_raw_print	= raw_print_irq_stats,
+	.f_pcp_print	= pcp_print_irq_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "Interrupts statistics",
@@ -226,6 +231,7 @@ struct activity swap_act = {
 	.f_json_print	= json_print_swap_stats,
 	.f_svg_print	= svg_print_swap_stats,
 	.f_raw_print	= raw_print_swap_stats,
+	.f_pcp_print	= pcp_print_swap_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "Swap activity",
@@ -272,6 +278,7 @@ struct activity paging_act = {
 	.f_json_print	= json_print_paging_stats,
 	.f_svg_print	= svg_print_paging_stats,
 	.f_raw_print	= raw_print_paging_stats,
+	.f_pcp_print	= pcp_print_paging_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "Paging activity",
@@ -307,7 +314,7 @@ struct activity io_act = {
 	.f_print_avg	= print_io_stats,
 #endif
 #if defined(SOURCE_SAR) || defined(SOURCE_SADF)
-	.hdr_line	= "tps;rtps;wtps;bread/s;bwrtn/s",
+	.hdr_line	= "tps;rtps;wtps;dtps;bread/s;bwrtn/s;bdscd/s",
 #endif
 	.gtypes_nr	= {STATS_IO_ULL, STATS_IO_UL, STATS_IO_U},
 	.ftypes_nr	= {0, 0, 0},
@@ -317,6 +324,7 @@ struct activity io_act = {
 	.f_json_print	= json_print_io_stats,
 	.f_svg_print	= svg_print_io_stats,
 	.f_raw_print	= raw_print_io_stats,
+	.f_pcp_print	= pcp_print_io_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "I/O and transfer rate statistics",
@@ -363,6 +371,7 @@ struct activity memory_act = {
 	.f_json_print	= json_print_memory_stats,
 	.f_svg_print	= svg_print_memory_stats,
 	.f_raw_print	= raw_print_memory_stats,
+	.f_pcp_print	= pcp_print_memory_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "Memory and/or swap utilization",
@@ -408,6 +417,7 @@ struct activity ktables_act = {
 	.f_json_print	= json_print_ktables_stats,
 	.f_svg_print	= svg_print_ktables_stats,
 	.f_raw_print	= raw_print_ktables_stats,
+	.f_pcp_print	= pcp_print_ktables_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "Kernel tables statistics",
@@ -453,6 +463,7 @@ struct activity queue_act = {
 	.f_json_print	= json_print_queue_stats,
 	.f_svg_print	= svg_print_queue_stats,
 	.f_raw_print	= raw_print_queue_stats,
+	.f_pcp_print	= pcp_print_queue_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "Queue length and load average statistics",
@@ -498,6 +509,7 @@ struct activity serial_act = {
 	.f_json_print	= json_print_serial_stats,
 	.f_svg_print	= NULL,
 	.f_raw_print	= raw_print_serial_stats,
+	.f_pcp_print	= pcp_print_serial_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "TTY devices statistics",
@@ -533,7 +545,7 @@ struct activity disk_act = {
 	.f_print_avg	= print_disk_stats,
 #endif
 #if defined(SOURCE_SAR) || defined(SOURCE_SADF)
-	.hdr_line	= "DEV;tps;rkB/s;wkB/s;areq-sz;aqu-sz;await;%util",
+	.hdr_line	= "DEV;tps;rkB/s;wkB/s;dkB/s;areq-sz;aqu-sz;await;%util",
 #endif
 	.gtypes_nr	= {STATS_DISK_ULL, STATS_DISK_UL, STATS_DISK_U},
 	.ftypes_nr	= {0, 0, 0},
@@ -588,6 +600,7 @@ struct activity net_dev_act = {
 	.f_json_print	= json_print_net_dev_stats,
 	.f_svg_print	= svg_print_net_dev_stats,
 	.f_raw_print	= raw_print_net_dev_stats,
+	.f_pcp_print	= pcp_print_net_dev_stats,
 	.f_count_new	= count_new_net_dev,
 	.item_list	= NULL,
 	.desc		= "Network interfaces statistics",
@@ -634,6 +647,7 @@ struct activity net_edev_act = {
 	.f_json_print	= json_print_net_edev_stats,
 	.f_svg_print	= svg_print_net_edev_stats,
 	.f_raw_print	= raw_print_net_edev_stats,
+	.f_pcp_print	= pcp_print_net_edev_stats,
 	.f_count_new	= count_new_net_edev,
 	.item_list	= NULL,
 	.desc		= "Network interfaces errors statistics",
@@ -679,6 +693,7 @@ struct activity net_nfs_act = {
 	.f_json_print	= json_print_net_nfs_stats,
 	.f_svg_print	= svg_print_net_nfs_stats,
 	.f_raw_print	= raw_print_net_nfs_stats,
+	.f_pcp_print	= pcp_print_net_nfs_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "NFS client statistics",
@@ -725,6 +740,7 @@ struct activity net_nfsd_act = {
 	.f_json_print	= json_print_net_nfsd_stats,
 	.f_svg_print	= svg_print_net_nfsd_stats,
 	.f_raw_print	= raw_print_net_nfsd_stats,
+	.f_pcp_print	= pcp_print_net_nfsd_stats,
 	.f_count_new	= NULL,
 	.item_list	= NULL,
 	.desc		= "NFS server statistics",

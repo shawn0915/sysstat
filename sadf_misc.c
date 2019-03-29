@@ -1,6 +1,6 @@
 /*
  * sadf_misc.c: Funtions used by sadf to display special records
- * (C) 2011-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 2011-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include "sadf.h"
+#include "pcp_def_metrics.h"
 
 #ifdef USE_NLS
 #include <locale.h>
@@ -32,9 +33,16 @@
 #define _(string) (string)
 #endif
 
+#ifdef HAVE_PCP
+#include <pcp/pmapi.h>
+#include <pcp/import.h>
+#endif
+
 extern unsigned int flags;
 extern char *seps[];
 
+extern int palette;
+extern unsigned int svg_colors[][SVG_COL_PALETTE_SIZE];
 
 /*
  ***************************************************************************
@@ -404,12 +412,15 @@ __printf_funct_t print_raw_comment(int *tab, int action, char *cur_date,
  * IN:
  * @tab		Number of tabulations.
  * @action	Action expected from current function.
+ * @act		Array of activities (unused here).
+ * @id_seq	Activity sequence (unused here).
  *
  * OUT:
  * @tab		Number of tabulations.
  ***************************************************************************
  */
-__printf_funct_t print_xml_statistics(int *tab, int action)
+__printf_funct_t print_xml_statistics(int *tab, int action, struct activity *act[],
+				      unsigned int id_seq[])
 {
 	if (action & F_BEGIN) {
 		xprintf((*tab)++, "<statistics>");
@@ -426,12 +437,15 @@ __printf_funct_t print_xml_statistics(int *tab, int action)
  * IN:
  * @tab		Number of tabulations.
  * @action	Action expected from current function.
+ * @act		Array of activities (unused here).
+ * @id_seq	Activity sequence (unused here).
  *
  * OUT:
  * @tab		Number of tabulations.
  ***************************************************************************
  */
-__printf_funct_t print_json_statistics(int *tab, int action)
+__printf_funct_t print_json_statistics(int *tab, int action, struct activity *act[],
+				       unsigned int id_seq[])
 {
 	static int sep = FALSE;
 
@@ -453,6 +467,92 @@ __printf_funct_t print_json_statistics(int *tab, int action)
 		}
 		xprintf0(--(*tab), "]");
 	}
+}
+
+/*
+ ***************************************************************************
+ * Display the "statistics" part of the report (PCP format).
+ *
+ * IN:
+ * @tab		Number of tabulations (unused here).
+ * @action	Action expected from current function.
+ * @act		Array of activities.
+ * @id_seq	Activity sequence.
+ ***************************************************************************
+ */
+__printf_funct_t print_pcp_statistics(int *tab, int action, struct activity *act[],
+				      unsigned int id_seq[])
+{
+#ifdef HAVE_PCP
+	int i, p;
+
+	if (action & F_BEGIN) {
+		for (i = 0; i < NR_ACT; i++) {
+			if (!id_seq[i])
+				continue;	/* Activity not in file */
+
+			p = get_activity_position(act, id_seq[i], EXIT_IF_NOT_FOUND);
+			if (!IS_SELECTED(act[p]->options))
+				continue;	/* Activity not selected */
+
+			switch (act[p]->id) {
+
+				case A_CPU:
+					pcp_def_cpu_metrics(act[p]);
+					break;
+
+				case A_PCSW:
+					pcp_def_pcsw_metrics();
+					break;
+
+				case A_IRQ:
+					pcp_def_irq_metrics(act[p]);
+					break;
+
+				case A_SWAP:
+					pcp_def_swap_metrics();
+					break;
+
+				case A_PAGE:
+					pcp_def_paging_metrics();
+					break;
+
+				case A_IO:
+					pcp_def_io_metrics();
+					break;
+
+				case A_MEMORY:
+					pcp_def_memory_metrics(act[p]);
+					break;
+
+				case A_KTABLES:
+					pcp_def_ktables_metrics();
+					break;
+
+				case A_QUEUE:
+					pcp_def_queue_metrics();
+					break;
+
+				case A_SERIAL:
+					pcp_def_serial_metrics(act[p]);
+					break;
+
+				case A_NET_DEV:
+				case A_NET_EDEV:
+					pcp_def_net_dev_metrics(act[p]);
+					break;
+
+				case A_NET_NFS:
+					pcp_def_net_nfs_metrics();
+					break;
+
+				case A_NET_NFSD:
+					pcp_def_net_nfsd_metrics();
+					break;
+			}
+		}
+	}
+#endif /* HAVE_PCP */
 }
 
 /*
@@ -508,6 +608,7 @@ char *print_dbppc_timestamp(int fmt, struct file_header *file_hdr, char *cur_dat
  * @cur_date	Date string of current record.
  * @cur_time	Time string of current record.
  * @itv		Interval of time with preceding record.
+ * @record_hdr	Record header for current sample (unused here).
  * @file_hdr	System activity file standard header.
  * @flags	Flags for common options.
  *
@@ -517,6 +618,7 @@ char *print_dbppc_timestamp(int fmt, struct file_header *file_hdr, char *cur_dat
  */
 __tm_funct_t print_ppc_timestamp(void *parm, int action, char *cur_date,
 				 char *cur_time, unsigned long long itv,
+				 struct record_header *record_hdr,
 				 struct file_header *file_hdr, unsigned int flags)
 {
 	int utc = !PRINT_LOCAL_TIME(flags) && !PRINT_TRUE_TIME(flags);
@@ -543,6 +645,7 @@ __tm_funct_t print_ppc_timestamp(void *parm, int action, char *cur_date,
  * @cur_date	Date string of current record.
  * @cur_time	Time string of current record.
  * @itv		Interval of time with preceding record.
+ * @record_hdr	Record header for current sample (unused here).
  * @file_hdr	System activity file standard header.
  * @flags	Flags for common options.
  *
@@ -552,6 +655,7 @@ __tm_funct_t print_ppc_timestamp(void *parm, int action, char *cur_date,
  */
 __tm_funct_t print_db_timestamp(void *parm, int action, char *cur_date,
 				char *cur_time, unsigned long long itv,
+				struct record_header *record_hdr,
 				struct file_header *file_hdr, unsigned int flags)
 {
 	int utc = !PRINT_LOCAL_TIME(flags) && !PRINT_TRUE_TIME(flags);
@@ -578,12 +682,14 @@ __tm_funct_t print_db_timestamp(void *parm, int action, char *cur_date,
  * @cur_date	Date string of current comment.
  * @cur_time	Time string of current comment.
  * @itv		Interval of time with preceding record.
+ * @record_hdr	Record header for current sample (unused here).
  * @file_hdr	System activity file standard header (unused here).
  * @flags	Flags for common options.
  ***************************************************************************
  */
 __tm_funct_t print_xml_timestamp(void *parm, int action, char *cur_date,
 				 char *cur_time, unsigned long long itv,
+				 struct record_header *record_hdr,
 				 struct file_header *file_hdr, unsigned int flags)
 {
 	int utc = !PRINT_LOCAL_TIME(flags) && !PRINT_TRUE_TIME(flags);
@@ -610,12 +716,14 @@ __tm_funct_t print_xml_timestamp(void *parm, int action, char *cur_date,
  * @cur_date	Date string of current comment.
  * @cur_time	Time string of current comment.
  * @itv		Interval of time with preceding record.
+ * @record_hdr	Record header for current sample (unused here).
  * @file_hdr	System activity file standard header (unused here).
  * @flags	Flags for common options.
  ***************************************************************************
  */
 __tm_funct_t print_json_timestamp(void *parm, int action, char *cur_date,
 				  char *cur_time, unsigned long long itv,
+				  struct record_header *record_hdr,
 				  struct file_header *file_hdr, unsigned int flags)
 {
 	int utc = !PRINT_LOCAL_TIME(flags) && !PRINT_TRUE_TIME(flags);
@@ -647,6 +755,7 @@ __tm_funct_t print_json_timestamp(void *parm, int action, char *cur_date,
  * @cur_date	Date string of current record.
  * @cur_time	Time string of current record.
  * @itv		Interval of time with preceding record (unused here).
+ * @record_hdr	Record header for current sample (unused here).
  * @file_hdr	System activity file standard header (unused here).
  * @flags	Flags for common options.
  *
@@ -655,8 +764,9 @@ __tm_funct_t print_json_timestamp(void *parm, int action, char *cur_date,
  ***************************************************************************
  */
 __tm_funct_t print_raw_timestamp(void *parm, int action, char *cur_date,
-				char *cur_time, unsigned long long itv,
-				struct file_header *file_hdr, unsigned int flags)
+				 char *cur_time, unsigned long long itv,
+				 struct record_header *record_hdr,
+				 struct file_header *file_hdr, unsigned int flags)
 {
 	int utc = !PRINT_LOCAL_TIME(flags) && !PRINT_TRUE_TIME(flags);
 	static char pre[80];
@@ -672,12 +782,48 @@ __tm_funct_t print_raw_timestamp(void *parm, int action, char *cur_date,
 
 /*
  ***************************************************************************
+ * Display the "timestamp" part of the report (PCP format).
+ *
+ * IN:
+ * @parm	Pointer on specific parameters (unused here).
+ * @action	Action expected from current function.
+ * @cur_date	Date string of current record (unused here).
+ * @cur_time	Time string of current record (unused here).
+ * @itv		Interval of time with preceding record (unused here).
+ * @record_hdr	Record header for current sample.
+ * @file_hdr	System activity file standard header (unused here).
+ * @flags	Flags for common options (unused here).
+ *
+ * RETURNS:
+ * Pointer on the "timestamp" string.
+ ***************************************************************************
+ */
+__tm_funct_t print_pcp_timestamp(void *parm, int action, char *cur_date,
+				 char *cur_time, unsigned long long itv,
+				 struct record_header *record_hdr,
+				 struct file_header *file_hdr, unsigned int flags)
+{
+#ifdef HAVE_PCP
+	int rc;
+
+	if (action & F_END) {
+		if ((rc = pmiWrite(record_hdr->ust_time, 0)) < 0) {
+			fprintf(stderr, "PCP: pmiWrite: %s\n", pmiErrStr(rc));
+			exit(4);
+		}
+	}
+#endif
+	return NULL;
+}
+
+/*
+ ***************************************************************************
  * Display the header of the report (XML format).
  *
  * IN:
  * @parm	Specific parameter. Here: number of tabulations.
  * @action	Action expected from current function.
- * @dfile	Name of system activity data file.
+ * @dfile	Unused here (PCP archive file).
  * @file_magic	System activity file magic header.
  * @file_hdr	System activity file standard header.
  * @act		Array of activities (unused here).
@@ -745,7 +891,7 @@ __printf_funct_t print_xml_header(void *parm, int action, char *dfile,
  * IN:
  * @parm	Specific parameter. Here: number of tabulations.
  * @action	Action expected from current function.
- * @dfile	Name of system activity data file.
+ * @dfile	Unused here (PCP archive file).
  * @file_magic	System activity file magic header.
  * @file_hdr	System activity file standard header.
  * @act		Array of activities (unused here).
@@ -806,7 +952,7 @@ __printf_funct_t print_json_header(void *parm, int action, char *dfile,
  * IN:
  * @parm	Specific parameter (unused here).
  * @action	Action expected from current function.
- * @dfile	Name of system activity data file.
+ * @dfile	Name of system activity data file (unused here).
  * @file_magic	System activity file magic header.
  * @file_hdr	System activity file standard header.
  * @act		Array of activities.
@@ -954,9 +1100,11 @@ __printf_funct_t print_svg_header(void *parm, int action, char *dfile,
 			height = 100;
 		}
 		printf(" width=\"%d\" height=\"%d\""
-		       " fill=\"black\" stroke=\"gray\" stroke-width=\"1\">\n",
-		       SVG_T_XSIZE * (hdr_parm->views_per_row), height);
-		printf("<text x=\"0\" y=\"30\" text-anchor=\"start\" stroke=\"brown\">");
+		       " fill=\"black\" stroke=\"#%06x\" stroke-width=\"1\">\n",
+		       SVG_T_XSIZE * (hdr_parm->views_per_row), height,
+		       svg_colors[palette][SVG_COL_DEFAULT_IDX]);
+		printf("<text x=\"0\" y=\"30\" text-anchor=\"start\" stroke=\"#%06x\">",
+		       svg_colors[palette][SVG_COL_HEADER_IDX]);
 		print_gal_header(localtime_r((const time_t *) &(file_hdr->sa_ust_time), &rectime),
 				 file_hdr->sa_sysname, file_hdr->sa_release,
 				 file_hdr->sa_nodename, file_hdr->sa_machine,
@@ -985,9 +1133,10 @@ __printf_funct_t print_svg_header(void *parm, int action, char *dfile,
 		if (!(action & F_BEGIN)) {
 			if (!hdr_parm->graph_nr) {
 				/* No views displayed */
-				printf("<text x= \"0\" y=\"%d\" text-anchor=\"start\" stroke=\"red\">",
+				printf("<text x= \"0\" y=\"%d\" text-anchor=\"start\" stroke=\"#%06x\">",
 				       SVG_H_YSIZE +
-				       SVG_C_YSIZE * (DISPLAY_TOC(flags) ? hdr_parm->nr_act_dispd : 0));
+				       SVG_C_YSIZE * (DISPLAY_TOC(flags) ? hdr_parm->nr_act_dispd : 0),
+				       svg_colors[palette][SVG_COL_ERROR_IDX]);
 				printf("No data!</text>\n");
 			}
 			/* Give actual SVG height */
@@ -998,6 +1147,53 @@ __printf_funct_t print_svg_header(void *parm, int action, char *dfile,
 		}
 		printf("</svg>\n");
 	}
+}
+
+/*
+ ***************************************************************************
+ * PCP header function.
+ *
+ * IN:
+ * @parm	Specific parameter.
+ * @action	Action expected from current function.
+ * @dfile	Name of PCP archive file.
+ * @file_magic	System activity file magic header (unused here).
+ * @file_hdr	System activity file standard header (unused here).
+ * @act		Array of activities (unused here).
+ * @id_seq	Activity sequence (unused here).
+ * @file_actlst	List of (known or unknown) activities in file (unused here).
+ ***************************************************************************
+ */
+__printf_funct_t print_pcp_header(void *parm, int action, char *dfile,
+				  struct file_magic *file_magic,
+				  struct file_header *file_hdr,
+				  struct activity *act[], unsigned int id_seq[],
+				  struct file_activity *file_actlst)
+{
+#ifdef HAVE_PCP
+	char buf[64];
+
+	if (action & F_BEGIN) {
+		/* Create new PCP context */
+		pmiStart(dfile, FALSE);
+		pmiSetTimezone("UTC");
+
+		/* Save number of CPU in PCP archive */
+		pmiAddMetric("hinv.ncpu",
+			     PM_IN_NULL, PM_TYPE_U32, PM_INDOM_NULL, PM_SEM_DISCRETE,
+			     pmiUnits(0, 0, 1, 0, 0, PM_COUNT_ONE));
+		snprintf(buf, sizeof(buf), "%u",
+			 file_hdr->sa_cpu_nr > 1 ? file_hdr->sa_cpu_nr - 1 : 1);
+		pmiPutValue("hinv.ncpu", NULL, buf);
+	}
+
+	if (action & F_END) {
+		if (action & F_BEGIN) {
+			pmiWrite(file_hdr->sa_ust_time, 0);
+		}
+		pmiEnd();
+	}
+#endif
 }
 
 /*
@@ -1145,4 +1341,69 @@ __nr_t count_new_disk(struct activity *a, int curr)
 	}
 
 	return nr;
+}
+
+/*
+ ***************************************************************************
+ * Init custom color palette used to draw graphs (sadf -g).
+ ***************************************************************************
+ */
+void init_custom_color_palette()
+{
+	char *e, *p;
+	int len;
+	unsigned int val;
+
+	/* Read S_COLORS_PALETTE environment variable */
+	if ((e = getenv(ENV_COLORS_PALETTE)) == NULL)
+		/* Environment variable not set */
+		return;
+
+	for (p = strtok(e, ":"); p; p =strtok(NULL, ":")) {
+
+		len = strlen(p);
+		if ((len > 8) || (len < 3) || (*(p + 1) != '=') ||
+		    (strspn(p + 2, "0123456789ABCDEFabcdef") != (len - 2)))
+			/* Ignore malformed codes */
+			continue;
+
+		sscanf(p + 2, "%x", &val);
+
+		if ((*p >= '0') && (*p <= '9')) {
+			svg_colors[SVG_CUSTOM_COL_PALETTE][*p & 0xf] = val;
+			continue;
+		}
+		else if (((*p >= 'A') && (*p <= 'F')) ||
+			 ((*p >= 'a') && (*p <= 'f'))) {
+			svg_colors[SVG_CUSTOM_COL_PALETTE][9 + (*p & 0xf)] = val;
+			continue;
+		}
+
+		switch (*p) {
+			case 'G':
+				svg_colors[SVG_CUSTOM_COL_PALETTE][SVG_COL_GRID_IDX] = val;
+				break;
+			case 'H':
+				svg_colors[SVG_CUSTOM_COL_PALETTE][SVG_COL_HEADER_IDX] = val;
+				break;
+			case 'I':
+				svg_colors[SVG_CUSTOM_COL_PALETTE][SVG_COL_INFO_IDX] = val;
+				break;
+			case 'K':
+				svg_colors[SVG_CUSTOM_COL_PALETTE][SVG_COL_BCKGRD_IDX] = val;
+				break;
+			case 'L':
+				svg_colors[SVG_CUSTOM_COL_PALETTE][SVG_COL_DEFAULT_IDX] = val;
+				break;
+			case 'T':
+				svg_colors[SVG_CUSTOM_COL_PALETTE][SVG_COL_TITLE_IDX] = val;
+				break;
+			case 'W':
+				svg_colors[SVG_CUSTOM_COL_PALETTE][SVG_COL_ERROR_IDX] = val;
+				break;
+			case 'X':
+				svg_colors[SVG_CUSTOM_COL_PALETTE][SVG_COL_AXIS_IDX] = val;
+				break;
+		}
+	}
 }

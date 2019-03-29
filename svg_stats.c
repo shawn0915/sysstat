@@ -1,6 +1,6 @@
 /*
  * svg_stats.c: Funtions used by sadf to display statistics in SVG format.
- * (C) 2016-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 2016-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -38,12 +38,29 @@
 #endif
 
 extern unsigned int flags;
+extern int palette;
 
-unsigned int svg_colors[] = {0x00cc00, 0xff00bf, 0x00ffff, 0xff0000,
-			     0xe85f00, 0x0000ff, 0x006020, 0x7030a0,
-			     0xffff00, 0x666635, 0xd60093, 0x00bfbf,
-			     0xcc3300, 0x50040f, 0xffffbf, 0x193d55};
-#define SVG_COLORS_IDX_MASK	0x0f
+unsigned int svg_colors[SVG_COL_PALETTE_NR][SVG_COL_PALETTE_SIZE] =
+	{{0x00cc00, 0xff00bf, 0x00ffff, 0xff0000,	/* Default palette */
+	  0xe85f00, 0x0000ff, 0x006020, 0x7030a0,
+	  0xffff00, 0x666635, 0xd60093, 0x00bfbf,
+	  0xcc3300, 0x50040f, 0xffffbf, 0x193d55,
+	  0x000000, 0xffffff, 0x202020, 0xffff00,
+	  0xffff00, 0x808080, 0xa52a2a, 0xff0000},
+
+	 {0x000000, 0x1a1aff, 0x1affb2, 0xb21aff,	/* Custom color palette */
+	  0x1ab2ff, 0xff1a1a, 0xffb31a, 0xb2ff1a,
+	  0xefefef, 0x000000, 0x1a1aff, 0x1affb2,
+	  0xb21aff, 0x1ab2ff, 0xff1a1a, 0xffb31a,
+	  0xffffff, 0x000000, 0xbebebe, 0x000000,
+	  0x000000, 0x000000, 0x000000, 0x000000},
+
+	 {0x696969, 0xbebebe, 0x000000, 0xa9a9a9,	/* Black & white palette */
+	  0x708090, 0xc0c0c0, 0x808080, 0xd3d3d3,
+	  0x909090, 0x696969, 0xbebebe, 0x000000,
+	  0x000000, 0xa9a9a9, 0xc0c0c0, 0x808080,
+	  0xffffff, 0x000000, 0xbebebe, 0x000000,
+	  0x000000, 0x000000, 0x000000, 0x000000}};
 
 /*
  ***************************************************************************
@@ -592,8 +609,10 @@ void display_hgrid(double ypos, double yfactor, double lmax, int dp)
 		/* Display horizontal lines (except on X axis) */
 		if (j > 0) {
 			printf("<polyline points=\"0,%.2f %d,%.2f\" style=\"vector-effect: non-scaling-stroke; "
-			       "stroke: #202020\" transform=\"scale(1,%f)\"/>\n",
-			       ypos * j, SVG_G_XSIZE, ypos * j, yfactor);
+			       "stroke: #%06x\" transform=\"scale(1,%f)\"/>\n",
+			       ypos * j, SVG_G_XSIZE, ypos * j,
+			       svg_colors[palette][SVG_COL_GRID_IDX],
+			       yfactor);
 		}
 
 		/*
@@ -602,9 +621,11 @@ void display_hgrid(double ypos, double yfactor, double lmax, int dp)
 		 * to make sure they are properly aligned.
 		 */
 		sprintf(stmp, "%.2f", ypos * j);
-		printf("<text x=\"0\" y=\"%ld\" style=\"fill: white; stroke: none; font-size: 12px; "
+		printf("<text x=\"0\" y=\"%ld\" style=\"fill: #%06x; stroke: none; font-size: 12px; "
 		       "text-anchor: end\">%.*f.</text>\n",
-		       (long) (atof(stmp) * yfactor), dp, ypos * j);
+		       (long) (atof(stmp) * yfactor),
+		       svg_colors[palette][SVG_COL_AXIS_IDX],
+		       dp, ypos * j);
 		j++;
 	}
 	while ((ypos * j <= lmax) && (j < MAX_HLINES_NR));
@@ -642,29 +663,36 @@ void display_vgrid(long int xpos, double xfactor, int v_gridnr, struct svg_parm 
 		sa_get_record_timestamp_struct(flags, &stamp, &rectime, NULL);
 		set_record_timestamp_string(flags, &stamp, NULL, cur_time, TIMESTAMP_LEN, &rectime);
 		printf("<polyline points=\"%ld,0 %ld,%d\" style=\"vector-effect: non-scaling-stroke; "
-		       "stroke: #202020\" transform=\"scale(%f,1)\"/>\n",
-		       xpos * j, xpos * j, -SVG_G_YSIZE, xfactor);
+		       "stroke: #%06x\" transform=\"scale(%f,1)\"/>\n",
+		       xpos * j, xpos * j, -SVG_G_YSIZE,
+		       svg_colors[palette][SVG_COL_GRID_IDX],
+		       xfactor);
 		/*
 		 * Display graduations.
 		 * NB: We may have tm_min != 0 if we have more than 24H worth of data in one datafile.
 		 * In this case, we should rather display the exact time instead of only the hour.
 		 */
 		if (DISPLAY_ONE_DAY(flags) && (rectime.tm_min == 0)) {
-			printf("<text x=\"%ld\" y=\"15\" style=\"fill: white; stroke: none; font-size: 14px; "
+			printf("<text x=\"%ld\" y=\"15\" style=\"fill: #%06x; stroke: none; font-size: 14px; "
 			       "text-anchor: start\">%2d:00</text>\n",
-			       (long) (xpos * j * xfactor) - 15, rectime.tm_hour);
+			       (long) (xpos * j * xfactor) - 15,
+			       svg_colors[palette][SVG_COL_AXIS_IDX],
+			       rectime.tm_hour);
 		}
 		else {
-			printf("<text x=\"%ld\" y=\"10\" style=\"fill: white; stroke: none; font-size: 12px; "
+			printf("<text x=\"%ld\" y=\"10\" style=\"fill: #%06x; stroke: none; font-size: 12px; "
 			       "text-anchor: start\" transform=\"rotate(45,%ld,0)\">%s</text>\n",
-			       (long) (xpos * j * xfactor), (long) (xpos * j * xfactor), cur_time);
+			       (long) (xpos * j * xfactor),
+			       svg_colors[palette][SVG_COL_AXIS_IDX],
+			       (long) (xpos * j * xfactor), cur_time);
 		}
 		stamp.ust_time += xpos;
 	}
 
 	if (!PRINT_LOCAL_TIME(flags)) {
-		printf("<text x=\"-10\" y=\"30\" style=\"fill: yellow; stroke: none; font-size: 12px; "
-		       "text-anchor: end\">UTC</text>\n");
+		printf("<text x=\"-10\" y=\"30\" style=\"fill: #%06x; stroke: none; font-size: 12px; "
+		       "text-anchor: end\">UTC</text>\n",
+		       svg_colors[palette][SVG_COL_INFO_IDX]);
 	}
 }
 
@@ -826,7 +854,7 @@ int draw_activity_graphs(int g_nr, int g_type[], char *title[], char *g_title[],
 			 unsigned int id, unsigned int xid)
 {
 	char *out_p;
-	int i, j, dp, pos = 0, views_nr = 0, displayed = FALSE;
+	int i, j, dp, pos = 0, views_nr = 0, displayed = FALSE, palpos;
 	int v_gridnr, xv, yv;
 	unsigned int asfactor[16];
 	long int xpos;
@@ -836,6 +864,9 @@ int draw_activity_graphs(int g_nr, int g_type[], char *title[], char *g_title[],
 
 	/* For each view which is part of current activity */
 	for (i = 0; i < g_nr; i++) {
+
+		/* Used as index in color palette */
+		palpos = (palette == SVG_BW_COL_PALETTE ? 0 : pos);
 
 		/* Get global min and max value for current view */
 		get_global_extrema(pos, group[i], spmin, spmax, &gmin, &gmax);
@@ -873,19 +904,23 @@ int draw_activity_graphs(int g_nr, int g_type[], char *title[], char *g_title[],
 		}
 
 		/* Graph background */
-		printf("<rect x=\"%d\" y=\"%d\" height=\"%d\" width=\"%d\"/>\n",
-		       xv, yv, SVG_V_YSIZE, SVG_V_XSIZE);
+		printf("<rect x=\"%d\" y=\"%d\" height=\"%d\" width=\"%d\" fill=\"#%06x\"/>\n",
+		       xv, yv, SVG_V_YSIZE, SVG_V_XSIZE,
+		       svg_colors[palette][SVG_COL_BCKGRD_IDX]);
 
 		/* Graph title */
-		printf("<text x=\"%d\" y=\"%d\" style=\"fill: yellow; stroke: none\">%s",
-		       xv, 20 + yv, title[i]);
+		printf("<text x=\"%d\" y=\"%d\" style=\"fill: #%06x; stroke: none\">%s",
+		       xv, 20 + yv,
+		       svg_colors[palette][SVG_COL_TITLE_IDX],
+		       title[i]);
 		if (item_name) {
 			printf(" [%s]", item_name);
 		}
 		printf("\n");
-		printf("<tspan x=\"%d\" y=\"%d\" style=\"fill: yellow; stroke: none; font-size: 12px\">"
+		printf("<tspan x=\"%d\" y=\"%d\" style=\"fill: #%06x; stroke: none; font-size: 12px\">"
 		       "(Min, Max values)</tspan>\n</text>\n",
-		       xv + 5 + SVG_M_XSIZE + SVG_G_XSIZE, yv + 25);
+		       xv + 5 + SVG_M_XSIZE + SVG_G_XSIZE, yv + 25,
+		       svg_colors[palette][SVG_COL_INFO_IDX]);
 
 		/*
 		 * At least two samples are needed.
@@ -894,17 +929,20 @@ int draw_activity_graphs(int g_nr, int g_type[], char *title[], char *g_title[],
 		if ((record_hdr->ust_time == svg_p->ust_time_first) ||
 		    (*(spmin + pos) == DBL_MAX) || (*(spmax + pos) == -DBL_MIN)) {
 			/* No data found */
-			printf("<text x=\"%d\" y=\"%d\" style=\"fill: red; stroke: none\">No data</text>\n",
-			       xv, yv + SVG_M_YSIZE);
+			printf("<text x=\"%d\" y=\"%d\" style=\"fill: #%06x; stroke: none\">No data</text>\n",
+			       xv, yv + SVG_M_YSIZE,
+			       svg_colors[palette][SVG_COL_ERROR_IDX]);
 			skip_current_view(out, &pos, group[i]);
 			continue;
 		}
 
 		/* X and Y axis */
-		printf("<polyline points=\"%d,%d %d,%d %d,%d\" stroke=\"white\" stroke-width=\"2\"/>\n",
+		printf("<polyline points=\"%d,%d %d,%d %d,%d\" style=\"fill: #%06x; stroke: #%06x; stroke-width: 2\"/>\n",
 		       xv + SVG_M_XSIZE, yv + SVG_M_YSIZE,
 		       xv + SVG_M_XSIZE, yv + SVG_M_YSIZE + SVG_G_YSIZE,
-		       xv + SVG_M_XSIZE + SVG_G_XSIZE, yv + SVG_M_YSIZE + SVG_G_YSIZE);
+		       xv + SVG_M_XSIZE + SVG_G_XSIZE, yv + SVG_M_YSIZE + SVG_G_YSIZE,
+		       svg_colors[palette][SVG_COL_BCKGRD_IDX],
+		       svg_colors[palette][SVG_COL_AXIS_IDX]);
 
 		/* Autoscaling graphs if needed */
 		gr_autoscaling(asfactor, 16, group[i], g_type[i], pos, gmax, spmax);
@@ -917,7 +955,7 @@ int draw_activity_graphs(int g_nr, int g_type[], char *title[], char *g_title[],
 			printf("<text x=\"%d\" y=\"%d\" style=\"fill: #%06x; stroke: none; font-size: 12px\">"
 			       "%s %s(%.*f, %.*f)</text>\n",
 			       xv + 5 + SVG_M_XSIZE + SVG_G_XSIZE, yv + SVG_M_YSIZE + j * 15,
-			       svg_colors[(pos + j) & SVG_COLORS_IDX_MASK], g_title[pos + j] + dp,
+			       svg_colors[palette][(palpos + j) & SVG_COLORS_IDX_MASK], g_title[pos + j] + dp,
 			       asfactor[j] == 1 ? "" : val,
 			       !dp * 2, *(spmin + pos + j) * asfactor[j],
 			       !dp * 2, *(spmax + pos + j) * asfactor[j]);
@@ -926,18 +964,20 @@ int draw_activity_graphs(int g_nr, int g_type[], char *title[], char *g_title[],
 		if (DISPLAY_INFO(flags)) {
 			/* Display additional info (hostname, date) */
 			printf("<text x=\"%d\" y=\"%d\" "
-			       "style=\"fill: yellow; text-anchor: end; stroke: none; font-size: 14px\">"
+			       "style=\"fill: #%06x; text-anchor: end; stroke: none; font-size: 14px\">"
 			       "%s\n",
 			       xv + SVG_V_XSIZE - 5, yv + SVG_M_YSIZE + SVG_G_YSIZE,
+			       svg_colors[palette][SVG_COL_INFO_IDX],
 			       svg_p->file_hdr->sa_nodename);
 
 			/* Get report date */
 			set_report_date(localtime_r((const time_t *) &(svg_p->file_hdr->sa_ust_time), &rectime),
 					cur_date, sizeof(cur_date));
 			printf("<tspan x=\"%d\" y=\"%d\" "
-			       "style=\"fill: yellow; text-anchor: end; stroke: none; font-size: 14px\">"
+			       "style=\"fill: #%06x; text-anchor: end; stroke: none; font-size: 14px\">"
 			       "%s</tspan>\n</text>\n",
 			       xv + SVG_V_XSIZE - 5, yv + SVG_M_YSIZE + SVG_G_YSIZE + 14,
+			       svg_colors[palette][SVG_COL_INFO_IDX],
 			       cur_date);
 		}
 
@@ -998,14 +1038,14 @@ int draw_activity_graphs(int g_nr, int g_type[], char *title[], char *g_title[],
 				       "stroke: #%06x; stroke-width: 1; fill-opacity: 0\" "
 				       "transform=\"scale(%f,%f)\"/>\n",
 				       out_p,
-				       svg_colors[(pos + j) & SVG_COLORS_IDX_MASK],
+				       svg_colors[palette][(palpos + j) & SVG_COLORS_IDX_MASK],
 				       xfactor,
 				       yfactor * asfactor[j]);
 			}
 			else if (*out_p) {	/* Ignore flat bars */
 				/* Bar graphs */
 				printf("<g style=\"fill: #%06x; stroke: none\" transform=\"scale(%f,%f)\">\n",
-				       svg_colors[(pos + j) & SVG_COLORS_IDX_MASK], xfactor, yfactor);
+				       svg_colors[palette][(palpos + j) & SVG_COLORS_IDX_MASK], xfactor, yfactor);
 				printf("%s\n", out_p);
 				printf("</g>\n");
 			}
@@ -1537,12 +1577,23 @@ __print_funct_t svg_print_io_stats(struct activity *a, int curr, int action, str
 	struct stats_io
 		*sic = (struct stats_io *) a->buf[curr],
 		*sip = (struct stats_io *) a->buf[!curr];
-	int group[] = {3, 2};
+	int group[] = {4, 3};
 	int g_type[] = {SVG_LINE_GRAPH, SVG_LINE_GRAPH};
 	char *title[] = {"I/O and transfer rate statistics (1)", "I/O and transfer rate statistics (2)"};
-	char *g_title[] = {"tps", "rtps", "wtps",
-			   "bread/s", "bwrtn/s"};
-	int g_fields[] = {0, 1, 2, 3, 4};
+	char *g_title[] = {"tps", "rtps", "wtps", "dtps",
+			   "bread/s", "bwrtn/s", "bdscd/s"};
+	/*
+	 * tps:0, rtps:1, wtps:2, dtps:3, bread/s:4, bwrtn/s:5, bdscd/s:6
+	 * g_fields[]:
+	 *	dk_drive=0
+	 *	dk_drive_rio:1
+	 *	dk_drive_wio:2
+	 *	dk_drive_rblk:4
+	 *	dk_drive_wblk:5
+	 *	dk_drive_dio:3
+	 *	dk_drive_dblk:6
+	 */
+	int g_fields[] = {0, 1, 2, 4, 5, 3, 6};
 	static double *spmin, *spmax;
 	static char **out;
 	static int *outsize;
@@ -1552,7 +1603,7 @@ __print_funct_t svg_print_io_stats(struct activity *a, int curr, int action, str
 		 * Allocate arrays that will contain the graphs data
 		 * and the min/max values.
 		 */
-		out = allocate_graph_lines(5, &outsize, &spmin, &spmax);
+		out = allocate_graph_lines(7, &outsize, &spmin, &spmax);
 	}
 
 	if (action & F_MAIN) {
@@ -1581,16 +1632,26 @@ __print_funct_t svg_print_io_stats(struct activity *a, int curr, int action, str
 			 sic->dk_drive_wio < sip->dk_drive_wio ? 0.0 :
 			 S_VALUE(sip->dk_drive_wio, sic->dk_drive_wio, itv),
 			 out + 2, outsize + 2, svg_p->restart);
+		/* dtps */
+		lnappend(record_hdr->ust_time - svg_p->ust_time_ref,
+			 sic->dk_drive_dio < sip->dk_drive_dio ? 0.0 :
+			 S_VALUE(sip->dk_drive_dio, sic->dk_drive_dio, itv),
+			 out + 3, outsize + 3, svg_p->restart);
 		/* bread/s */
 		lnappend(record_hdr->ust_time - svg_p->ust_time_ref,
 			 sic->dk_drive_rblk < sip->dk_drive_rblk ? 0.0 :
 			 S_VALUE(sip->dk_drive_rblk, sic->dk_drive_rblk, itv),
-			 out + 3, outsize + 3, svg_p->restart);
+			 out + 4, outsize + 4, svg_p->restart);
 		/* bwrtn/s */
 		lnappend(record_hdr->ust_time - svg_p->ust_time_ref,
 			 sic->dk_drive_wblk < sip->dk_drive_wblk ? 0.0 :
 			 S_VALUE(sip->dk_drive_wblk, sic->dk_drive_wblk, itv),
-			 out + 4, outsize + 4, svg_p->restart);
+			 out + 5, outsize + 5, svg_p->restart);
+		/* bdscd/s */
+		lnappend(record_hdr->ust_time - svg_p->ust_time_ref,
+			 sic->dk_drive_dblk < sip->dk_drive_dblk ? 0.0 :
+			 S_VALUE(sip->dk_drive_dblk, sic->dk_drive_dblk, itv),
+			 out + 6, outsize + 6, svg_p->restart);
 	}
 
 	if (action & F_END) {
@@ -2013,35 +2074,35 @@ __print_funct_t svg_print_disk_stats(struct activity *a, int curr, int action, s
 {
 	struct stats_disk *sdc, *sdp, sdpzero;
 	struct ext_disk_stats xds;
-	int group[] = {1, 2, 2, 1, 1};
+	int group[] = {1, 3, 2, 1, 1};
 	int g_type[] = {SVG_LINE_GRAPH, SVG_LINE_GRAPH, SVG_LINE_GRAPH,
 			SVG_LINE_GRAPH, SVG_BAR_GRAPH};
 	char *title[] = {"Block devices statistics (1)", "Block devices statistics (2)",
 			 "Block devices statistics (3)", "Block devices statistics (4)",
 			 "Block devices statistics (5)"};
 	char *g_title[] = {"tps",
-			   "rkB/s", "wkB/s",
+			   "rkB/s", "wkB/s", "dkB/s",
 			   "areq-sz", "aqu-sz",
 			   "await",
 			   "%util"};
 	int g_fields[] = {0, 1, 2};
-	int nr_arrays = 8;
+	int nr_arrays = 9;
 	unsigned int local_types_nr[] = {1, 0, 0};
 	static double *spmin, *spmax;
 	static char **out;
 	static int *outsize;
 	char *item_name;
-	double rkB, wkB, aqusz;
+	double rkB, wkB, dkB, aqusz;
 	int i, j, k, pos, restart, *unregistered;
 
 	if (action & F_BEGIN) {
 		/*
-		 * Allocate arrays (#0..6) that will contain the graphs data
+		 * Allocate arrays (#0..7) that will contain the graphs data
 		 * and the min/max values.
-		 * Also allocate one additional array (#7) for each disk device:
-		 * spmax + 7 will contain the device major number,
-		 * spmin + 7 will contain the device minor number,
-		 * outsize + 7 will contain a positive value (TRUE) if the device
+		 * Also allocate one additional array (#8) for each disk device:
+		 * spmax + 8 will contain the device major number,
+		 * spmin + 8 will contain the device minor number,
+		 * outsize + 8 will contain a positive value (TRUE) if the device
 		 * has either still not been registered, or has been unregistered.
 		 */
 		out = allocate_graph_lines(nr_arrays * a->item_list_sz, &outsize, &spmin, &spmax);
@@ -2055,7 +2116,7 @@ __print_funct_t svg_print_disk_stats(struct activity *a, int curr, int action, s
 		 * possibly unregistered for all graphs.
 		 */
 		for (k = 0; k < a->item_list_sz; k++) {
-			unregistered = outsize + k * nr_arrays + 7;
+			unregistered = outsize + k * nr_arrays + 8;
 			if (*unregistered == FALSE) {
 				*unregistered = MAYBE;
 			}
@@ -2077,15 +2138,15 @@ __print_funct_t svg_print_disk_stats(struct activity *a, int curr, int action, s
 
 			/* Look for corresponding graph */
 			for (k = 0; k < a->item_list_sz; k++) {
-				if ((sdc->major == *(spmax + k * nr_arrays + 7)) &&
-				    (sdc->minor == *(spmin + k * nr_arrays + 7)))
+				if ((sdc->major == *(spmax + k * nr_arrays + 8)) &&
+				    (sdc->minor == *(spmin + k * nr_arrays + 8)))
 					/* Graph found! */
 					break;
 			}
 			if (k == a->item_list_sz) {
 				/* Graph not found: Look for first free entry */
 				for (k = 0; k < a->item_list_sz; k++) {
-					if (*(spmax + k * nr_arrays + 7) == -DBL_MAX)
+					if (*(spmax + k * nr_arrays + 8) == -DBL_MAX)
 						break;
 				}
 				if (k == a->item_list_sz) {
@@ -2098,7 +2159,7 @@ __print_funct_t svg_print_disk_stats(struct activity *a, int curr, int action, s
 				}
 			}
 			pos = k * nr_arrays;
-			unregistered = outsize + pos + 7;
+			unregistered = outsize + pos + 8;
 
 			/*
 			 * If current device was marked as previously unregistered,
@@ -2110,10 +2171,10 @@ __print_funct_t svg_print_disk_stats(struct activity *a, int curr, int action, s
 			}
 			*unregistered = FALSE;
 
-			if (*(spmax + pos + 7) == -DBL_MAX) {
+			if (*(spmax + pos + 8) == -DBL_MAX) {
 				/* Save device major and minor numbers (if not already done) */
-				*(spmax + pos + 7) = sdc->major;
-				*(spmin + pos + 7) = sdc->minor;
+				*(spmax + pos + 8) = sdc->major;
+				*(spmin + pos + 8) = sdc->minor;
 			}
 
 			j = check_disk_reg(a, curr, !curr, i);
@@ -2131,6 +2192,7 @@ __print_funct_t svg_print_disk_stats(struct activity *a, int curr, int action, s
 
 			rkB = S_VALUE(sdp->rd_sect, sdc->rd_sect, itv) / 2;
 			wkB = S_VALUE(sdp->wr_sect, sdc->wr_sect, itv) / 2;
+			dkB = S_VALUE(sdp->dc_sect, sdc->dc_sect, itv) / 2;
 			if (rkB < *(spmin + pos + 1)) {
 				*(spmin + pos + 1) = rkB;
 			}
@@ -2143,32 +2205,38 @@ __print_funct_t svg_print_disk_stats(struct activity *a, int curr, int action, s
 			if (wkB > *(spmax + pos + 2)) {
 				*(spmax + pos + 2) = wkB;
 			}
+			if (dkB < *(spmin + pos + 3)) {
+				*(spmin + pos + 3) = dkB;
+			}
+			if (dkB > *(spmax + pos + 3)) {
+				*(spmax + pos + 3) = dkB;
+			}
 
 			compute_ext_disk_stats(sdc, sdp, itv, &xds);
-			if ((xds.arqsz / 2) < *(spmin + pos + 3)) {
-				*(spmin + pos + 3) = xds.arqsz / 2;
+			if ((xds.arqsz / 2) < *(spmin + pos + 4)) {
+				*(spmin + pos + 4) = xds.arqsz / 2;
 			}
-			if ((xds.arqsz / 2) > *(spmax + pos + 3)) {
-				*(spmax + pos + 3) = xds.arqsz / 2;
+			if ((xds.arqsz / 2) > *(spmax + pos + 4)) {
+				*(spmax + pos + 4) = xds.arqsz / 2;
 			}
 			aqusz = S_VALUE(sdp->rq_ticks, sdc->rq_ticks, itv) / 1000.0;
-			if (aqusz < *(spmin + pos + 4)) {
-				*(spmin + pos + 4) = aqusz;
+			if (aqusz < *(spmin + pos + 5)) {
+				*(spmin + pos + 5) = aqusz;
 			}
-			if (aqusz > *(spmax + pos + 4)) {
-				*(spmax + pos + 4) = aqusz;
+			if (aqusz > *(spmax + pos + 5)) {
+				*(spmax + pos + 5) = aqusz;
 			}
-			if (xds.await < *(spmin + pos + 5)) {
-				*(spmin + pos + 5) = xds.await;
+			if (xds.await < *(spmin + pos + 6)) {
+				*(spmin + pos + 6) = xds.await;
 			}
-			if (xds.await > *(spmax + pos + 5)) {
-				*(spmax + pos + 5) = xds.await;
+			if (xds.await > *(spmax + pos + 6)) {
+				*(spmax + pos + 6) = xds.await;
 			}
-			if ((xds.util / 10.0) < *(spmin + pos + 6)) {
-				*(spmin + pos + 6) = xds.util / 10.0;
+			if ((xds.util / 10.0) < *(spmin + pos + 7)) {
+				*(spmin + pos + 7) = xds.util / 10.0;
 			}
-			if ((xds.util / 10.0) > *(spmax + pos + 6)) {
-				*(spmax + pos + 6) = xds.util / 10.0;
+			if ((xds.util / 10.0) > *(spmax + pos + 7)) {
+				*(spmax + pos + 7) = xds.util / 10.0;
 			}
 
 			/* tps */
@@ -2183,27 +2251,31 @@ __print_funct_t svg_print_disk_stats(struct activity *a, int curr, int action, s
 			lnappend(record_hdr->ust_time - svg_p->ust_time_ref,
 				 S_VALUE(sdp->wr_sect, sdc->wr_sect, itv) / 2,
 				 out + pos + 2, outsize + pos + 2, restart);
+			/* dkB/s */
+			lnappend(record_hdr->ust_time - svg_p->ust_time_ref,
+				 S_VALUE(sdp->dc_sect, sdc->dc_sect, itv) / 2,
+				 out + pos + 3, outsize + pos + 3, restart);
 			/* areq-sz */
 			lnappend(record_hdr->ust_time - svg_p->ust_time_ref,
 				 xds.arqsz / 2,
-				 out + pos + 3, outsize + pos + 3, restart);
+				 out + pos + 4, outsize + pos + 4, restart);
 			/* aqu-sz */
 			lnappend(record_hdr->ust_time - svg_p->ust_time_ref,
 				 aqusz,
-				 out + pos + 4, outsize + pos + 4, restart);
+				 out + pos + 5, outsize + pos + 5, restart);
 			/* await */
 			lnappend(record_hdr->ust_time - svg_p->ust_time_ref,
 				 xds.await,
-				 out + pos + 5, outsize + pos + 5, restart);
+				 out + pos + 6, outsize + pos + 6, restart);
 			/* %util */
 			brappend(record_hdr->ust_time - svg_p->ust_time_ref,
 				 0.0, xds.util / 10.0,
-				 out + pos + 6, outsize + pos + 6, svg_p->dt);
+				 out + pos + 7, outsize + pos + 7, svg_p->dt);
 		}
 
 		/* Mark devices not seen here as now unregistered */
 		for (k = 0; k < a->item_list_sz; k++) {
-			unregistered = outsize + k * nr_arrays + 7;
+			unregistered = outsize + k * nr_arrays + 8;
 			if (*unregistered != FALSE) {
 				*unregistered = TRUE;
 			}
@@ -2220,7 +2292,7 @@ __print_funct_t svg_print_disk_stats(struct activity *a, int curr, int action, s
 				continue;
 
 			/* Get device name */
-			item_name = get_sa_devname(*(spmax + pos + 7), *(spmin + pos + 7), flags);
+			item_name = get_sa_devname(*(spmax + pos + 8), *(spmin + pos + 8), flags);
 
 			if (draw_activity_graphs(a->g_nr, g_type,
 						 title, g_title, item_name, group,

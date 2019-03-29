@@ -1,6 +1,6 @@
 /*
  * rd_stats.c: Read system statistics
- * (C) 1999-2018 by Sebastien GODARD (sysstat <at> orange.fr)
+ * (C) 1999-2019 by Sebastien GODARD (sysstat <at> orange.fr)
  *
  ***************************************************************************
  * This program is free software; you can redistribute it and/or modify it *
@@ -375,10 +375,10 @@ void compute_ext_disk_stats(struct stats_disk *sdc, struct stats_disk *sdp,
 	 * => no need for further scaling.
 	 */
 	xds->await = (sdc->nr_ios - sdp->nr_ios) ?
-		((sdc->rd_ticks - sdp->rd_ticks) + (sdc->wr_ticks - sdp->wr_ticks)) /
+		((sdc->rd_ticks - sdp->rd_ticks) + (sdc->wr_ticks - sdp->wr_ticks) + (sdc->dc_ticks - sdp->dc_ticks)) /
 		((double) (sdc->nr_ios - sdp->nr_ios)) : 0.0;
 	xds->arqsz = (sdc->nr_ios - sdp->nr_ios) ?
-		((sdc->rd_sect - sdp->rd_sect) + (sdc->wr_sect - sdp->wr_sect)) /
+		((sdc->rd_sect - sdp->rd_sect) + (sdc->wr_sect - sdp->wr_sect) + (sdc->dc_sect - sdp->dc_sect)) /
 		((double) (sdc->nr_ios - sdp->nr_ios)) : 0.0;
 }
 
@@ -722,27 +722,42 @@ __nr_t read_diskstats_io(struct stats_io *st_io)
 	char line[1024];
 	char dev_name[MAX_NAME_LEN];
 	unsigned int major, minor;
-	unsigned long rd_ios, wr_ios, rd_sec, wr_sec;
+	unsigned long rd_ios, wr_ios, dc_ios;
+	unsigned long rd_sec, wr_sec, dc_sec;
 
 	if ((fp = fopen(DISKSTATS, "r")) == NULL)
 		return 0;
 
 	while (fgets(line, sizeof(line), fp) != NULL) {
 
-		if (sscanf(line, "%u %u %s %lu %*u %lu %*u %lu %*u %lu",
+		/* Discard I/O stats may be not available */
+		dc_ios = dc_sec = 0;
+
+		if (sscanf(line,
+			   "%u %u %s "
+			   "%lu %*u %lu %*u "
+			   "%lu %*u %lu %*u "
+			   "%*u %*u %*u "
+			   "%lu %*u %lu",
 			   &major, &minor, dev_name,
-			   &rd_ios, &rd_sec, &wr_ios, &wr_sec) == 7) {
+			   &rd_ios, &rd_sec,
+			   &wr_ios, &wr_sec,
+			   &dc_ios, &dc_sec) >= 7) {
 
 			if (is_device(dev_name, IGNORE_VIRTUAL_DEVICES)) {
 				/*
 				 * OK: It's a (real) device and not a partition.
 				 * Note: Structure should have been initialized first!
 				 */
-				st_io->dk_drive      += (unsigned long long) rd_ios + (unsigned long long) wr_ios;
+				st_io->dk_drive      += (unsigned long long) rd_ios +
+							(unsigned long long) wr_ios +
+							(unsigned long long) dc_ios;
 				st_io->dk_drive_rio  += rd_ios;
 				st_io->dk_drive_rblk += rd_sec;
 				st_io->dk_drive_wio  += wr_ios;
 				st_io->dk_drive_wblk += wr_sec;
+				st_io->dk_drive_dio  += dc_ios;
+				st_io->dk_drive_dblk += dc_sec;
 			}
 		}
 	}
@@ -776,8 +791,8 @@ __nr_t read_diskstats_disk(struct stats_disk *st_disk, __nr_t nr_alloc,
 	char line[1024];
 	char dev_name[MAX_NAME_LEN];
 	struct stats_disk *st_disk_i;
-	unsigned int major, minor, rd_ticks, wr_ticks, tot_ticks, rq_ticks;
-	unsigned long rd_ios, wr_ios, rd_sec, wr_sec;
+	unsigned int major, minor, rd_ticks, wr_ticks, dc_ticks, tot_ticks, rq_ticks;
+	unsigned long rd_ios, wr_ios, dc_ios, rd_sec, wr_sec, dc_sec;
 	__nr_t dsk_read = 0;
 
 	if ((fp = fopen(DISKSTATS, "r")) == NULL)
@@ -785,13 +800,22 @@ __nr_t read_diskstats_disk(struct stats_disk *st_disk, __nr_t nr_alloc,
 
 	while (fgets(line, sizeof(line), fp) != NULL) {
 
-		if (sscanf(line, "%u %u %s %lu %*u %lu %u %lu %*u %lu"
-			   " %u %*u %u %u",
-			   &major, &minor, dev_name,
-			   &rd_ios, &rd_sec, &rd_ticks, &wr_ios, &wr_sec, &wr_ticks,
-			   &tot_ticks, &rq_ticks) == 11) {
+		/* Discard I/O stats may be not available */
+		dc_ios = dc_sec = dc_ticks = 0;
 
-			if (!rd_ios && !wr_ios)
+		if (sscanf(line,
+			   "%u %u %s "
+			   "%lu %*u %lu %u "
+			   "%lu %*u %lu %u "
+			   "%*u %u %u "
+			   "%lu %*u %lu %u",
+			   &major, &minor, dev_name,
+			   &rd_ios, &rd_sec, &rd_ticks,
+			   &wr_ios, &wr_sec, &wr_ticks,
+			   &tot_ticks, &rq_ticks,
+			   &dc_ios, &dc_sec, &dc_ticks) >= 11) {
+
+			if (!rd_ios && !wr_ios && !dc_ios)
 				/* Unused device: Ignore it */
 				continue;
 			if (read_part || is_device(dev_name, ACCEPT_VIRTUAL_DEVICES)) {
@@ -804,11 +828,15 @@ __nr_t read_diskstats_disk(struct stats_disk *st_disk, __nr_t nr_alloc,
 				st_disk_i = st_disk + dsk_read++;
 				st_disk_i->major     = major;
 				st_disk_i->minor     = minor;
-				st_disk_i->nr_ios    = (unsigned long long) rd_ios + (unsigned long long) wr_ios;
+				st_disk_i->nr_ios    = (unsigned long long) rd_ios +
+						       (unsigned long long) wr_ios +
+						       (unsigned long long) dc_ios;
 				st_disk_i->rd_sect   = rd_sec;
 				st_disk_i->wr_sect   = wr_sec;
+				st_disk_i->dc_sect   = dc_sec;
 				st_disk_i->rd_ticks  = rd_ticks;
 				st_disk_i->wr_ticks  = wr_ticks;
+				st_disk_i->dc_ticks  = dc_ticks;
 				st_disk_i->tot_ticks = tot_ticks;
 				st_disk_i->rq_ticks  = rq_ticks;
 			}
@@ -2436,9 +2464,9 @@ __nr_t read_bus_usb_dev(struct stats_pwr_usb *st_pwr_usb, __nr_t nr_alloc)
 __nr_t read_filesystem(struct stats_filesystem *st_filesystem, __nr_t nr_alloc)
 {
 	FILE *fp;
-	char line[512], fs_name[128], mountp[256];
+	char line[512], fs_name[MAX_FS_LEN], mountp[256], type[128];
 	int skip = 0, skip_next = 0;
-	char *pos = 0;
+	char *pos = 0, *pos2 = 0;
 	__nr_t fs_read = 0;
 	struct stats_filesystem *st_filesystem_i;
 	struct statvfs buf;
@@ -2461,6 +2489,19 @@ __nr_t read_filesystem(struct stats_filesystem *st_filesystem, __nr_t nr_alloc)
 			/* Find field separator position */
 			pos = strchr(line, ' ');
 			if (pos == NULL)
+				continue;
+
+			/*
+			 * Find second field separator position,
+			 * read filesystem type,
+			 * if filesystem type is autofs, skip it
+			*/
+			pos2 = strchr(pos + 1, ' ');
+			if (pos2 == NULL)
+				continue;
+
+			sscanf(pos2 + 1, "%127s", type);
+			if(strcmp(type, "autofs") == 0)
 				continue;
 
 			/* Read current filesystem name */
@@ -2594,7 +2635,7 @@ __nr_t read_fchost(struct stats_fchost *st_fc, __nr_t nr_alloc)
 			st_fc_i->f_txframes = tx_frames;
 			st_fc_i->f_rxwords  = rx_words;
 			st_fc_i->f_txwords  = tx_words;
-			strncpy(st_fc_i->fchost_name, drd->d_name, MAX_FCH_LEN);
+			memcpy(st_fc_i->fchost_name, drd->d_name, MAX_FCH_LEN);
 			st_fc_i->fchost_name[MAX_FCH_LEN - 1] = '\0';
 		}
 	}
